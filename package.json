@@ -1,0 +1,12 @@
+{
+  "name": "teleprompter",
+  "version": "1.0.0",
+  "description": "Voice-driven teleprompter — scrolls your script as you speak",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^41.7.1"
+  }
+}
