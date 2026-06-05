@@ -21,7 +21,7 @@ function createWindow() {
 
   // Grant microphone access to the renderer
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(['media', 'microphone', 'camera'].includes(permission))
+    callback(['media', 'microphone'].includes(permission))
   })
 
   win.loadFile('index.html')

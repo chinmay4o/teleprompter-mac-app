@@ -148,6 +148,7 @@ function syncSpeedUI() {
 ══════════════════════════════════════════════ */
 async function startTeleprompter() {
   if (!state.script.trim()) return
+  if (state.isRunning) return   // guard against rapid double-click
 
   // Switch screen
   setupScreen.classList.remove('active')
@@ -260,7 +261,9 @@ function scrollLoop(ts) {
  * Base is 130 WPM; user's speed multiplier scales linearly.
  */
 function pixelsPerSecond() {
-  const w            = scriptText.offsetWidth           // usable text width
+  // offsetWidth includes padding (52px left + 52px right = 104px).
+  // Subtract it to get the real usable text width for char-per-line math.
+  const w            = scriptText.offsetWidth - 104    // usable text width
   const fs           = state.fontSize
   const charsPerLine = w / (fs * 0.52)                 // ~0.52× fontSize per char
   const wordsPerLine = charsPerLine / 5                 // 5 chars/word average
@@ -365,10 +368,17 @@ document.addEventListener('keydown', e => {
 })
 
 /* ══════════════════════════════════════════════
-   Window resize
+   Window resize & visibility
 ══════════════════════════════════════════════ */
 window.addEventListener('resize', () => {
   if (state.isRunning) updateLayout()
+})
+
+// When the user tabs away, rAF pauses. On return the first elapsed value
+// would be "time away" seconds, causing a giant scroll jump. Resetting
+// lastTs to null makes the first frame back treat elapsed as 0.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) state.lastTs = null
 })
 
 /* ══════════════════════════════════════════════

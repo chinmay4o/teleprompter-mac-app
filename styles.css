@@ -181,7 +181,9 @@ html, body {
 /* ══════════════════ TELEPROMPTER SCREEN ══════════════════ */
 #teleprompter-screen {
   background: var(--bg);
-  position: relative;
+  /* position: absolute + inset: 0 inherited from .screen — do NOT override with
+     relative here; an ID-selector override would collapse height to 0 because
+     all children are absolutely positioned (out of normal flow). */
   overflow: hidden;
 }
 
