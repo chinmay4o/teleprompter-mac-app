@@ -5,13 +5,13 @@ let win = null
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 860,
-    height: 540,
-    minWidth: 440,
-    minHeight: 320,
+    width: 1280,
+    height: 800,
+    minWidth: 800,
+    minHeight: 560,
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 14, y: 13 },
-    backgroundColor: '#0a0a0a',
+    trafficLightPosition: { x: 14, y: 14 },
+    backgroundColor: '#F0EBE2',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
