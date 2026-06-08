@@ -1,86 +1,2467 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src *">
-  <title>Teleprompter</title>
-  <link rel="stylesheet" href="styles.css">
+    content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src *; connect-src 'self'; worker-src blob: 'self';" />
+  <title>Cue — Teleprompter</title>
+  <link rel="stylesheet" href="colors_and_type.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    #root { height: 100%; }
+    button { font-family: var(--font-mono); }
+    *::-webkit-scrollbar { width: 9px; height: 9px; }
+    *::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    .prompt-word { color: var(--up); transition: color 140ms linear; }
+    .prompt-word.is-read { color: var(--read); }
+    .prompt-word.is-active { color: var(--act); font-weight: 700; }
+    @keyframes cuePop { 0% { transform: scale(0.5); opacity: 0; } 30% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.25); opacity: 0; } }
+    @keyframes cueBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  </style>
 </head>
 <body>
+<div id="root"></div>
+<script src="./node_modules/react/umd/react.development.js"></script>
+<script src="./node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="./node_modules/@babel/standalone/babel.min.js"></script>
 
-  <!-- ─────────── Setup Screen ─────────── -->
-  <div id="setup-screen" class="screen active">
 
-    <div class="toolbar">
-      <span class="app-title">Teleprompter</span>
-      <div class="toolbar-controls">
-        <button class="icon-btn" id="theme-btn" title="Toggle theme">☀️</button>
-        <button class="icon-btn" id="pin-btn"   title="Always on top">📌</button>
-        <div class="font-controls">
-          <button class="icon-btn font-s" id="font-down-btn" title="Smaller">A</button>
-          <span id="font-size-label">48</span>
-          <button class="icon-btn font-l" id="font-up-btn"   title="Larger">A</button>
+<script type="text/babel" data-presets="react">
+;(function(){
+// @ds-adherence-ignore -- omelette starter scaffold (raw elements/hex/px by design)
+
+/* BEGIN USAGE */
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+// Exports (to window): useTweaks, TweaksPanel, TweakSection, TweakRow, TweakSlider,
+//   TweakToggle, TweakRadio, TweakSelect, TweakText, TweakNumber, TweakColor, TweakButton.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// TweakRadio is the segmented control for 2–3 short options (auto-falls-back to
+// TweakSelect past ~16/~10 chars per label); reach for TweakSelect directly when
+// options are many or long. For color tweaks always curate 3-4 options rather than
+// a free picker; an option can also be a whole 2–5 color palette (the stored value
+// is the array). The Tweak* controls are a floor, not a ceiling — build custom
+// controls inside the panel if a tweak calls for UI they don't cover.
+/* END USAGE */
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;box-sizing:border-box;width:100%;min-width:0;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;box-sizing:border-box;min-width:0;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', children, isOpen: isOpenProp, onClose }) {
+  const [openInternal, setOpenInternal] = React.useState(false);
+  // If isOpenProp is provided, use it as controlled mode; otherwise use internal postMessage state
+  const open = isOpenProp !== undefined ? isOpenProp : openInternal;
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    if (isOpenProp !== undefined) return; // controlled mode, skip postMessage
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpenInternal(true);
+      else if (t === '__deactivate_edit_mode') setOpenInternal(false);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [isOpenProp]);
+
+  const dismiss = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      setOpenInternal(false);
+      window.postMessage({ type: '__edit_mode_dismissed' }, '*');
+    }
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-omelette-chrome=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React */
+// Shared primitives + icon set for the Cue teleprompter app.
+// Stroke-1.5 line icons (Lucide-flavored) to match the design system's spare feel.
+
+const { useState } = React;
+
+/* ---------- Icon ---------- */
+function Icon({ name, size = 16, stroke, sw = 1.5, style }) {
+  const s = size;
+  const wrap = (children) => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none"
+      stroke={stroke || 'currentColor'} strokeWidth={sw}
+      strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0, display: 'block', ...style }}>{children}</svg>
+  );
+  switch (name) {
+    case 'play':     return wrap(<path d="M7 5l12 7-12 7z" fill="currentColor" stroke="none" />);
+    case 'pause':    return wrap(<><rect x="6.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/></>);
+    case 'mic':      return wrap(<><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></>);
+    case 'mic-off':  return wrap(<><path d="M9 9v-4a3 3 0 0 1 5.5-1.7M15 9.3V5M5 11a7 7 0 0 0 11.3 5.5M12 18v3M8 21h8M3 3l18 18"/></>);
+    case 'gauge':    return wrap(<><path d="M12 14l4-4"/><path d="M4 18a8 8 0 1 1 16 0"/><circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none"/></>);
+    case 'mirror':   return wrap(<><path d="M12 3v18"/><path d="M9 7L4 12l5 5z"/><path d="M15 7l5 5-5 5z" fill="currentColor" fillOpacity="0.18"/></>);
+    case 'gear':     return wrap(<><circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M22 12h-2.5M4.5 12H2M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8M18.4 18.4l-1.8-1.8M7.4 7.4L5.6 5.6"/></>);
+    case 'back':     return wrap(<path d="M15 6l-6 6 6 6"/>);
+    case 'search':   return wrap(<><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>);
+    case 'plus':     return wrap(<path d="M12 5v14M5 12h14"/>);
+    case 'star':     return wrap(<path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 17l-5.3 2.6 1-5.8-4.2-4.1 5.9-.9z"/>);
+    case 'star-fill':return wrap(<path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 17l-5.3 2.6 1-5.8-4.2-4.1 5.9-.9z" fill="currentColor"/>);
+    case 'clock':    return wrap(<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></>);
+    case 'doc':      return wrap(<><path d="M6 2.5h8L19 7v14.5H6z"/><path d="M14 2.5V7h5M9 12h6M9 15.5h6"/></>);
+    case 'record':   return wrap(<circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/>);
+    case 'square':   return wrap(<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/>);
+    case 'camera':   return wrap(<><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7H7l1.2-2h7.6L17 7h2.5A1.5 1.5 0 0 1 21 8.5V18a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/><circle cx="12" cy="12.5" r="3.2"/></>);
+    case 'flag':     return wrap(<><path d="M6 3v18"/><path d="M6 4h11l-2 3 2 3H6"/></>);
+    case 'chevron':  return wrap(<path d="M6 9l6 6 6-6"/>);
+    case 'sun':      return wrap(<><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M22 12h-2.5M4.5 12H2M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8M18.4 18.4l-1.8-1.8M7.4 7.4L5.6 5.6"/></>);
+    case 'moon':     return wrap(<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>);
+    case 'aspect':   return wrap(<><rect x="3" y="6" width="18" height="12" rx="1.5"/></>);
+    case 'plus-sm':  return wrap(<path d="M12 6v12M6 12h12"/>);
+    case 'minus-sm': return wrap(<path d="M6 12h12"/>);
+    case 'type':     return wrap(<><path d="M4 7V5h16v2M12 5v14M9 19h6"/></>);
+    case 'list':     return wrap(<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>);
+    case 'eye':      return wrap(<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.8"/></>);
+    case 'restart':  return wrap(<><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 3.5V8h4.5"/></>);
+    case 'check':    return wrap(<path d="M5 12.5l4.5 4.5L19 7"/>);
+    default:         return wrap(<circle cx="12" cy="12" r="3"/>);
+  }
+}
+
+/* ---------- Button ---------- */
+function Button({ children, variant = 'primary', size = 'md', onClick, style, title, ...rest }) {
+  const [hover, setHover] = useState(false);
+  const sizes = {
+    sm: { fontSize: 12,   padding: '5px 11px', gap: 6 },
+    md: { fontSize: 13,   padding: '7px 15px', gap: 7 },
+    lg: { fontSize: 14,   padding: '9px 19px', gap: 8 },
+  };
+  const variants = {
+    primary: { background: hover ? 'var(--accent-hover)' : 'var(--accent)', color: '#fff', borderColor: 'transparent' },
+    ghost:   { background: hover ? 'var(--surface-2)' : 'var(--surface)', color: 'var(--accent)', borderColor: 'var(--border)' },
+    quiet:   { background: hover ? 'var(--accent-faint)' : 'transparent', color: 'var(--ink-2)', borderColor: 'transparent' },
+    danger:  { background: hover ? '#d8392f' : '#E0463B', color: '#fff', borderColor: 'transparent' },
+  };
+  return (
+    <button title={title} onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        gap: sizes[size].gap, fontFamily: 'var(--font-mono)', fontWeight: 600,
+        fontSize: sizes[size].fontSize, padding: sizes[size].padding,
+        borderRadius: 'var(--r-pill)', border: '1px solid transparent', cursor: 'pointer',
+        whiteSpace: 'nowrap', transition: 'background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease)',
+        ...variants[variant], ...style,
+      }}
+      onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
+      onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+      {...rest}>{children}</button>
+  );
+}
+
+/* ---------- IconButton ---------- */
+function IconButton({ name, size = 18, onClick, title, active, style, tone = 'ink' }) {
+  const [hover, setHover] = useState(false);
+  const color = active ? 'var(--accent)' : (tone === 'inverse' ? 'var(--ink-inverse)' : 'var(--ink-2)');
+  return (
+    <button title={title} onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 32, height: 32, borderRadius: 'var(--r-input)', cursor: 'pointer',
+        border: '1px solid transparent',
+        background: active ? 'var(--accent-soft)' : (hover ? 'var(--accent-faint)' : 'transparent'),
+        color, transition: 'background var(--dur-fast) var(--ease)', ...style,
+      }}>
+      <Icon name={name} size={size} />
+    </button>
+  );
+}
+
+/* ---------- Pill / Tag ---------- */
+function Pill({ children, tone = 'accent', size = 'md', style }) {
+  const tones = {
+    accent:   { bg: 'var(--accent-soft)', fg: 'var(--accent)' },
+    lavender: { bg: 'var(--pill-lavender)', fg: 'var(--ink-1)' },
+    peach:    { bg: 'var(--pill-peach)', fg: 'var(--ink-1)' },
+    butter:   { bg: 'var(--pill-butter)', fg: 'var(--ink-1)' },
+    sage:     { bg: 'var(--pill-sage)', fg: 'var(--ink-1)' },
+    sky:      { bg: 'var(--pill-sky)', fg: 'var(--ink-1)' },
+    rose:     { bg: 'var(--pill-rose)', fg: 'var(--ink-1)' },
+    mute:     { bg: 'transparent', fg: 'var(--ink-2)' },
+  };
+  const t = tones[tone] || tones.accent;
+  const sizes = {
+    sm: { fontSize: 11, padding: '1px 8px', borderRadius: 'var(--r-tag)' },
+    md: { fontSize: 12.5, padding: '3px 11px', borderRadius: 'var(--r-pill)' },
+  };
+  return <span style={{
+    display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+    fontFamily: 'var(--font-mono)', fontWeight: 500, background: t.bg, color: t.fg,
+    border: tone === 'mute' ? '1px solid var(--border)' : '1px solid transparent',
+    ...sizes[size], ...style,
+  }}>{children}</span>;
+}
+
+function StatusTag({ status }) {
+  const map = {
+    ready:   { tone: 'sage',   label: 'ready' },
+    draft:   { tone: 'butter', label: 'draft' },
+    archived:{ tone: 'rose',   label: 'archived' },
+  };
+  const s = map[status] || { tone: 'lavender', label: status };
+  return <Pill tone={s.tone} size="sm">{s.label}</Pill>;
+}
+
+/* ---------- Eyebrow ---------- */
+function Eyebrow({ children, style }) {
+  return <div style={{
+    fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600,
+    letterSpacing: 'var(--track-mega)', textTransform: 'uppercase', color: 'var(--ink-3)',
+    ...style,
+  }}>{children}</div>;
+}
+
+Object.assign(window, { Icon, Button, IconButton, Pill, StatusTag, Eyebrow });
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React */
+// Script data + tokenizer + timing helpers for Cue.
+
+// Cue markers: a line of the form [[Label]] becomes a jump point.
+const DEFAULT_SCRIPTS = [
+  {
+    id: 'launch',
+    title: 'Product launch — v3 announce',
+    folder: 'YouTube',
+    status: 'ready',
+    favorite: true,
+    updated: '2h ago',
+    accent: 'lavender',
+    body: `[[Cold open]]
+Okay — three years ago we shipped a tiny app that did exactly one thing. Today it does that one thing better than anything else on the market, and I want to show you why.
+
+[[The problem]]
+Every creator I talk to says the same sentence: "I know what I want to say, I just freeze the second the light turns red." That freeze is expensive. It's the difference between one clean take and forty.
+
+[[What's new]]
+So in version three we rebuilt the whole reading engine around your voice. You don't chase a scroll bar anymore — the script waits for you. Pause to breathe, and it pauses with you. Land a punchline, and it holds the line until you move on.
+
+[[The ask]]
+The update is free for everyone, rolling out this week. If it saves you a single re-take, it's done its job. Hit record, read it once, and get back to making things.`,
+  },
+  {
+    id: 'demo',
+    title: 'Feature demo — voice sync walkthrough',
+    folder: 'Tutorials',
+    status: 'ready',
+    favorite: false,
+    updated: 'Yesterday',
+    accent: 'sky',
+    body: `[[Hook]]
+Let me show you the one setting that changed how I record everything.
+
+[[Setup]]
+Open any script, switch the mode to Voice, and just start talking. Notice the prompter isn't moving on a timer — it's following the words coming out of my mouth right now, in real time.
+
+[[Demo the pause]]
+Watch what happens when I stop… and think for a second… and the line stays exactly where I left it. No scrambling back, no thumb on a remote.
+
+[[Close]]
+That's the whole trick. Read at your own pace, and let the page keep up with you instead of the other way around.`,
+  },
+  {
+    id: 'lesson',
+    title: 'Course lesson 04 — composition basics',
+    folder: 'Course',
+    status: 'draft',
+    favorite: true,
+    updated: '3 days ago',
+    accent: 'sage',
+    body: `[[Intro]]
+Welcome back. In this lesson we're going to talk about why some shots feel calm and others feel tense — and it almost always comes down to where you put the edges.
+
+[[Rule of thirds]]
+Divide your frame into nine equal parts. The four points where those lines cross are where your eye wants to land. Put the important thing there, not dead center.
+
+[[Negative space]]
+Now here's the part people skip: the empty area is doing work too. Give your subject somewhere to look, somewhere to move into, and the whole frame starts to breathe.
+
+[[Practice]]
+Before next lesson, shoot ten frames of the same subject — five centered, five on a third. Look at them side by side. You'll feel the difference before you can explain it.`,
+  },
+  {
+    id: 'adread',
+    title: 'Podcast ad read — 60 seconds',
+    folder: 'Podcast',
+    status: 'ready',
+    favorite: false,
+    updated: '5 days ago',
+    accent: 'peach',
+    body: `[[Ad read]]
+This episode is brought to you by the notebook I actually use. I've tried every app, every system, every color-coded nonsense — and I kept coming back to paper.
+
+[[The pitch]]
+It lies flat. It never needs charging. And it doesn't ping me while I'm trying to think. Use the code from the show notes and you'll get the starter set for the price of a coffee.
+
+[[Tag]]
+Okay — back to the episode.`,
+  },
+  {
+    id: 'standup',
+    title: 'Team all-hands — Q3 opening',
+    folder: 'Work',
+    status: 'draft',
+    favorite: false,
+    updated: 'Last week',
+    accent: 'butter',
+    body: `[[Open]]
+Morning everyone. Before we get into numbers, I want to start with the thing I'm proudest of this quarter, and it isn't on a slide.
+
+[[The win]]
+We said we'd cut setup time in half. We cut it by sixty percent. That's not a metric — that's an hour back in every customer's day, every single day.
+
+[[What's next]]
+Next quarter is about depth, not breadth. Fewer new things, done properly. I'd rather ship three features people love than thirty they tolerate.`,
+  },
+  {
+    id: 'vlog',
+    title: 'Weekly vlog — intro segment',
+    folder: 'YouTube',
+    status: 'ready',
+    favorite: false,
+    updated: 'Just now',
+    accent: 'rose',
+    body: `[[Intro]]
+Hey — welcome back to the channel. If you're new here, this is the place where we figure things out loud and occasionally get it right.
+
+[[This week]]
+This week got away from me in the best way, so the plan went out the window and we're just going to talk about what actually happened instead.
+
+[[CTA]]
+If that sounds like your kind of mess, the subscribe button is right there. Let's get into it.`,
+  },
+];
+
+// Tokenize body into a flat list of tokens.
+// types: 'word' (carries text + global word index), 'space', 'break', 'cue' (label + index)
+function tokenize(body) {
+  const lines = body.split('\n');
+  const tokens = [];
+  let wi = 0;
+  const cues = [];
+  let prevWasContent = false;
+  lines.forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return; // blank line ignored (paragraphs are explicit lines)
+    const cueMatch = line.match(/^\[\[(.+)\]\]$/);
+    if (cueMatch) {
+      const ci = cues.length;
+      cues.push({ label: cueMatch[1], wordIndex: wi, tokenIndex: tokens.length });
+      tokens.push({ type: 'cue', label: cueMatch[1], cueIndex: ci, wordIndex: wi });
+      prevWasContent = false;
+      return;
+    }
+    if (prevWasContent) tokens.push({ type: 'break' });
+    const words = line.split(/\s+/);
+    words.forEach((w, i) => {
+      tokens.push({ type: 'word', text: w, wi });
+      wi += 1;
+      if (i < words.length - 1) tokens.push({ type: 'space' });
+    });
+    prevWasContent = true;
+  });
+  return { tokens, totalWords: wi, cues };
+}
+
+function wordCount(body) {
+  return tokenize(body).totalWords;
+}
+
+// Estimated read time string at a given words-per-minute.
+function readTime(body, wpm = 130) {
+  const w = wordCount(body);
+  const secs = Math.round((w / wpm) * 60);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function fmtTime(secs) {
+  secs = Math.max(0, Math.round(secs));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+Object.assign(window, { DEFAULT_SCRIPTS, tokenize, wordCount, readTime, fmtTime });
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React, Icon */
+// Shared playback controls: segmented mode toggle, transport HUD, cue menu.
+
+const { useState: useStateCtrl, useRef: useRefCtrl, useEffect: useEffectCtrl } = React;
+
+// Segmented control (Voice / Auto / Manual)
+function Segmented({ value, options, onChange, dark }) {
+  return (
+    <div style={{
+      display: 'inline-flex', padding: 3, borderRadius: 'var(--r-pill)', gap: 2,
+      background: dark ? 'rgba(255,255,255,0.08)' : 'var(--surface-3)',
+      border: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid var(--border-faint)',
+    }}>
+      {options.map(o => {
+        const active = value === o.value;
+        return (
+          <button key={o.value} onClick={() => onChange(o.value)} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer',
+            padding: '5px 13px', borderRadius: 'var(--r-pill)', fontFamily: 'var(--font-mono)',
+            fontSize: 12.5, fontWeight: active ? 600 : 500,
+            background: active ? (dark ? 'rgba(255,255,255,0.92)' : 'var(--surface)') : 'transparent',
+            color: active ? (dark ? '#13151c' : 'var(--ink-1)') : (dark ? 'rgba(255,255,255,0.7)' : 'var(--ink-2)'),
+            boxShadow: active ? 'var(--shadow-float)' : 'none',
+            transition: 'background var(--dur-fast) var(--ease)',
+          }}>
+            {o.icon && <Icon name={o.icon} size={14} />}{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Stepper:  −  value  +
+function Stepper({ icon, label, onDec, onInc, dark }) {
+  const btn = {
+    width: 26, height: 26, borderRadius: 'var(--r-input)', border: 'none', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    background: dark ? 'rgba(255,255,255,0.08)' : 'var(--surface-2)',
+    color: dark ? 'rgba(255,255,255,0.85)' : 'var(--ink-1)',
+  };
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+      <button style={btn} onClick={onDec}><Icon name="minus-sm" size={15} /></button>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, minWidth: 44, textAlign: 'center', whiteSpace: 'nowrap',
+        color: dark ? '#fff' : 'var(--ink-1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+        {icon && <Icon name={icon} size={13} />}{label}
+      </span>
+      <button style={btn} onClick={onInc}><Icon name="plus-sm" size={15} /></button>
+    </div>
+  );
+}
+
+function Divider({ dark }) {
+  return <span style={{ width: 1, height: 26, background: dark ? 'rgba(255,255,255,0.12)' : 'var(--border)' }} />;
+}
+
+// Cue jump menu
+function CueMenu({ cues, activeCue, onJump, dark }) {
+  const [open, setOpen] = useStateCtrl(false);
+  const ref = useRefCtrl(null);
+  useEffectCtrl(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  if (!cues || !cues.length) return null;
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)} title="Cue points" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', cursor: 'pointer',
+        borderRadius: 'var(--r-input)', border: 'none', fontFamily: 'var(--font-mono)', fontSize: 12.5,
+        background: dark ? 'rgba(255,255,255,0.08)' : 'var(--surface-2)',
+        color: dark ? 'rgba(255,255,255,0.85)' : 'var(--ink-1)',
+      }}>
+        <Icon name="flag" size={14} />{activeCue >= 0 ? cues[activeCue].label : 'Cues'}
+        <Icon name="chevron" size={13} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, minWidth: 200, zIndex: 50,
+          background: dark ? '#1b1e28' : 'var(--surface)', border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)',
+          borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-pop)', padding: 6,
+        }}>
+          {cues.map((c, i) => (
+            <button key={i} onClick={() => { onJump(c.wordIndex); setOpen(false); }} style={{
+              display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+              border: 'none', cursor: 'pointer', padding: '7px 10px', borderRadius: 'var(--r-input)',
+              background: i === activeCue ? (dark ? 'rgba(255,255,255,0.08)' : 'var(--accent-soft)') : 'transparent',
+              color: i === activeCue ? (dark ? '#fff' : 'var(--accent)') : (dark ? 'rgba(255,255,255,0.8)' : 'var(--ink-1)'),
+              fontFamily: 'var(--font-mono)', fontSize: 12.5,
+            }}>
+              <span style={{ color: dark ? 'rgba(255,255,255,0.4)' : 'var(--ink-3)', fontSize: 11, minWidth: 16 }}>{String(i + 1).padStart(2, '0')}</span>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The transport HUD — floating control bar.
+function TransportHUD({
+  mode, onMode, playing, onPlay, onRestart,
+  wpm, onWpm, fontSize, onFont,
+  elapsed, total, fraction, fmt,
+  cues, activeCue, onJumpCue, dark,
+}) {
+  const playBtn = {
+    width: 46, height: 46, borderRadius: '50%', border: 'none', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    background: 'var(--accent)', color: '#fff', flexShrink: 0,
+    transition: 'transform var(--dur-fast) var(--ease)',
+  };
+  const iconBtn = {
+    width: 32, height: 32, borderRadius: 'var(--r-input)', border: 'none', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    background: dark ? 'rgba(255,255,255,0.08)' : 'var(--surface-2)',
+    color: dark ? 'rgba(255,255,255,0.85)' : 'var(--ink-1)',
+  };
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, padding: '9px 13px',
+      borderRadius: 18, flexWrap: 'wrap', maxWidth: '100%', rowGap: 8,
+      background: dark ? 'rgba(22,25,34,0.86)' : 'var(--surface)',
+      border: dark ? '1px solid rgba(255,255,255,0.1)' : '1px solid var(--border)',
+      boxShadow: 'var(--shadow-pop)',
+      backdropFilter: dark ? 'blur(12px)' : 'none', WebkitBackdropFilter: dark ? 'blur(12px)' : 'none',
+    }}>
+      <Segmented value={mode} onChange={onMode} dark={dark}
+        options={[
+          { value: 'voice', label: 'Voice', icon: 'mic' },
+          { value: 'auto', label: 'Auto', icon: 'gauge' },
+          { value: 'manual', label: 'Manual', icon: 'list' },
+        ]} />
+
+      <Divider dark={dark} />
+
+      <button style={iconBtn} onClick={onRestart} title="Restart (R)"><Icon name="restart" size={16} /></button>
+      <button style={playBtn} onClick={onPlay} title="Play / pause (Space)"
+        onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.94)'}
+        onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
+        <Icon name={playing ? 'pause' : 'play'} size={20} />
+      </button>
+
+      <Divider dark={dark} />
+
+      {mode === 'manual'
+        ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: dark ? 'rgba(255,255,255,0.55)' : 'var(--ink-3)', minWidth: 120, textAlign: 'center' }}>scroll / ↑ ↓ to move</span>
+        : <Stepper icon="gauge" label={`${wpm}`} dark={dark}
+            onDec={() => onWpm(Math.max(60, wpm - 10))} onInc={() => onWpm(Math.min(260, wpm + 10))} />
+      }
+
+      <Stepper icon="type" label={`${fontSize}`} dark={dark}
+        onDec={() => onFont(Math.max(28, fontSize - 4))} onInc={() => onFont(Math.min(96, fontSize + 4))} />
+
+      <Divider dark={dark} />
+
+      {/* time + progress */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 116 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)',
+          fontSize: 11.5, color: dark ? 'rgba(255,255,255,0.7)' : 'var(--ink-2)' }}>
+          <span style={{ color: dark ? '#fff' : 'var(--ink-1)' }}>{fmt(elapsed)}</span>
+          <span>{fmt(total)}</span>
+        </div>
+        <div style={{ height: 3, borderRadius: 2, background: dark ? 'rgba(255,255,255,0.14)' : 'var(--surface-3)' }}>
+          <div style={{ width: `${Math.round(fraction * 100)}%`, height: '100%', borderRadius: 2, background: 'var(--accent)' }} />
+        </div>
+      </div>
+
+      <CueMenu cues={cues} activeCue={activeCue} onJump={onJumpCue} dark={dark} />
+    </div>
+  );
+}
+
+Object.assign(window, { Segmented, Stepper, CueMenu, TransportHUD });
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React */
+// PrompterCanvas — the scrolling reading engine, shared by the on-screen
+// prompter and the recording overlay.
+//
+// Continuous pixel-smooth scroll driven by a rAF loop (transform mutated
+// directly, not via React state). Word highlighting tracks the focus line.
+// Voice mode simulates speech tracking: the scroll speeds, drifts and pauses
+// like a real speaker, with a live mic-level meter reflecting the envelope.
+
+const { useRef, useState, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } = React;
+
+const PrompterCanvas = forwardRef(function PrompterCanvas(props, ref) {
+  const {
+    tokens, totalWords, cues,
+    wpm = 130, mode = 'voice', playing = false,
+    mirrorH = false, mirrorV = false,
+    fontSize = 52, lineHeight = 1.45, weight = 600,
+    align = 'left', maxWidth = 18, // maxWidth in em
+    focusStyle = 'line', focusColor = 'var(--accent)', focusPct = 0.42,
+    variant = 'screen',
+    onProgress, onActiveCue, onEnd,
+  } = props;
+
+  const viewportRef = useRef(null);
+  const scrollerRef = useRef(null);
+  const wordEls = useRef([]);
+  const topsRef = useRef([]);        // natural top of each word within scroller content (excl. padding)
+  const rangeRef = useRef(1);        // scroll range in px
+  const posRef = useRef(0);          // current scroll position px
+  const lastActiveRef = useRef(-1);
+  const lastCueRef = useRef(-1);
+  const rafRef = useRef(0);
+  const lastTsRef = useRef(0);
+  const micRef = useRef(0.4);
+  const envRef = useRef({ pauseUntil: 0, nextPauseAt: 1.5, drift: 1, t: 0 });
+  const meterBars = useRef([]);
+  const lastProgressRef = useRef(0);
+  const wordRefCbs = useRef({});
+  function wordRef(i) {
+    if (!wordRefCbs.current[i]) wordRefCbs.current[i] = (el) => { wordEls.current[i] = el; };
+    return wordRefCbs.current[i];
+  }
+
+  const playingRef = useRef(playing);
+  const modeRef = useRef(mode);
+  const wpmRef = useRef(wpm);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { wpmRef.current = wpm; }, [wpm]);
+
+  const isCamera = variant === 'camera';
+
+  // ---- measure word tops ----
+  function measure() {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const focusY = vp.clientHeight * focusPct;
+    const padTop = focusY;
+    const sc = scrollerRef.current;
+    if (sc) sc.style.paddingTop = padTop + 'px';
+    const tops = [];
+    const els = wordEls.current;
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i];
+      tops[i] = el ? el.offsetTop - padTop : 0; // natural top (relative to first line)
+    }
+    topsRef.current = tops;
+    rangeRef.current = Math.max(1, tops[tops.length - 1] || 1);
+    applyTransform();
+  }
+
+  function applyTransform() {
+    const sc = scrollerRef.current;
+    if (!sc) return;
+    sc.style.transform = `translateY(${-posRef.current}px)`;
+  }
+
+  function findActive(pos, focusY) {
+    const tops = topsRef.current;
+    const target = pos; // word natural top that is at the focus line
+    // largest i with tops[i] <= target
+    let lo = 0, hi = tops.length - 1, ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (tops[mid] <= target) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return ans;
+  }
+
+  function applyActive(active) {
+    const last = lastActiveRef.current;
+    if (active === last) return;
+    const els = wordEls.current;
+    const a = Math.min(last < 0 ? active : last, active);
+    const b = Math.max(last < 0 ? active : last, active);
+    for (let i = a; i <= b; i++) {
+      const el = els[i];
+      if (!el) continue;
+      el.className = 'prompt-word' + (i < active ? ' is-read' : i === active ? ' is-active' : '');
+    }
+    // ensure the boundary words always correct
+    if (els[active]) els[active].className = 'prompt-word is-active';
+    lastActiveRef.current = active;
+
+    // cue tracking
+    if (cues && cues.length && onActiveCue) {
+      let ci = -1;
+      for (let k = 0; k < cues.length; k++) { if (cues[k].wordIndex <= active) ci = k; else break; }
+      if (ci !== lastCueRef.current) { lastCueRef.current = ci; onActiveCue(ci); }
+    }
+  }
+
+  function updateMeter() {
+    const bars = meterBars.current;
+    const base = micRef.current;
+    for (let i = 0; i < bars.length; i++) {
+      const el = bars[i];
+      if (!el) continue;
+      const jitter = 0.35 + 0.65 * Math.abs(Math.sin(Date.now() / (90 + i * 37) + i));
+      const h = Math.max(0.12, base * jitter);
+      el.style.transform = `scaleY(${h.toFixed(3)})`;
+    }
+  }
+
+  function loop(ts) {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    if (!lastTsRef.current) lastTsRef.current = ts;
+    let dt = (ts - lastTsRef.current) / 1000;
+    lastTsRef.current = ts;
+    if (dt > 0.1) dt = 0.1;
+
+    const focusY = vp.clientHeight * focusPct;
+    const range = rangeRef.current;
+    const totalSecs = Math.max(1, (totalWords / Math.max(40, wpmRef.current)) * 60);
+    const baseV = range / totalSecs; // px/s for steady reading
+
+    const env = envRef.current;
+    env.t += dt;
+    let factor = 0;
+    if (playingRef.current && modeRef.current !== 'manual') {
+      if (modeRef.current === 'voice') {
+        // organic speech envelope: drift + occasional pauses
+        if (env.t >= env.nextPauseAt && env.t > env.pauseUntil) {
+          env.pauseUntil = env.t + 0.3 + Math.random() * 0.6;
+          env.nextPauseAt = env.t + 2.5 + Math.random() * 3.5;
+        }
+        const paused = env.t < env.pauseUntil;
+        // smooth drift between 0.8 and 1.25
+        env.drift += (((Math.sin(env.t * 0.9) + Math.sin(env.t * 2.3) * 0.4) * 0.18 + 1) - env.drift) * Math.min(1, dt * 4);
+        factor = paused ? 0.03 : Math.max(0.4, env.drift);
+        const targetMic = paused ? 0.12 : Math.min(1, 0.55 + (factor - 0.9) * 0.7 + Math.random() * 0.2);
+        micRef.current += (targetMic - micRef.current) * Math.min(1, dt * 12);
+      } else {
+        factor = 1;
+        micRef.current += (0 - micRef.current) * Math.min(1, dt * 8);
+      }
+      posRef.current += baseV * factor * dt;
+      if (posRef.current >= range) {
+        posRef.current = range;
+        if (onEnd) onEnd();
+      }
+    } else {
+      micRef.current += ((modeRef.current === 'voice' && playingRef.current ? 0.2 : 0) - micRef.current) * Math.min(1, dt * 8);
+    }
+
+    applyTransform();
+    const active = findActive(posRef.current, focusY);
+    applyActive(active);
+    if (modeRef.current === 'voice') updateMeter();
+
+    // throttled progress callback (~8/s)
+    if (ts - lastProgressRef.current > 120 && onProgress) {
+      lastProgressRef.current = ts;
+      const frac = Math.min(1, posRef.current / range);
+      onProgress(frac, frac * totalSecs, totalSecs, active);
+    }
+  }
+
+  useEffect(() => {
+    // Timer-driven tick (works even where rAF is suspended). performance.now()
+    // keeps motion time-correct regardless of tick cadence.
+    let alive = true;
+    const id = setInterval(() => { if (alive) loop(performance.now()); }, 1000 / 60);
+    rafRef.current = id;
+    return () => { alive = false; clearInterval(id); };
+    // eslint-disable-next-line
+  }, [totalWords, focusPct]);
+
+  // re-measure on layout-affecting prop changes
+  useLayoutEffect(() => {
+    measure();
+    // eslint-disable-next-line
+  }, [tokens, fontSize, lineHeight, weight, align, maxWidth, mirrorH, mirrorV, variant, focusPct]);
+
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp || typeof ResizeObserver === 'undefined') return;
+    let w = vp.clientWidth;
+    const ro = new ResizeObserver(() => {
+      // remeasure on width change (wrapping changes tops)
+      if (Math.abs(vp.clientWidth - w) > 1) { w = vp.clientWidth; measure(); }
+      else measure(); // height change → focusY only, cheap
+    });
+    ro.observe(vp);
+    return () => ro.disconnect();
+    // eslint-disable-next-line
+  }, []);
+
+  // wheel scrub in manual mode
+  function onWheel(e) {
+    if (modeRef.current !== 'manual') return;
+    e.preventDefault();
+    posRef.current = Math.max(0, Math.min(rangeRef.current, posRef.current + e.deltaY));
+    applyTransform();
+    const focusY = (viewportRef.current.clientHeight) * focusPct;
+    applyActive(findActive(posRef.current, focusY));
+  }
+
+  useImperativeHandle(ref, () => ({
+    seekWord(i) {
+      const tops = topsRef.current;
+      if (tops[i] == null) return;
+      posRef.current = Math.max(0, Math.min(rangeRef.current, tops[i]));
+      applyTransform();
+      const focusY = viewportRef.current.clientHeight * focusPct;
+      applyActive(findActive(posRef.current, focusY));
+    },
+    restart() {
+      posRef.current = 0; lastActiveRef.current = -1; lastCueRef.current = -1;
+      envRef.current = { pauseUntil: 0, nextPauseAt: 1.5, drift: 1, t: 0 };
+      applyTransform();
+      applyActive(0);
+    },
+    nudge(dPx) {
+      posRef.current = Math.max(0, Math.min(rangeRef.current, posRef.current + dPx));
+      applyTransform();
+      const focusY = viewportRef.current.clientHeight * focusPct;
+      applyActive(findActive(posRef.current, focusY));
+    },
+    getFraction() { return Math.min(1, posRef.current / rangeRef.current); },
+  }));
+
+  // color vars
+  const colorVars = isCamera
+    ? { '--up': 'rgba(255,255,255,0.92)', '--read': 'rgba(255,255,255,0.34)', '--act': '#ffffff' }
+    : { '--up': 'color-mix(in srgb, var(--ink-1) 88%, transparent)', '--read': 'var(--ink-3)', '--act': 'var(--ink-1)' };
+
+  let wi = -1;
+  const content = tokens.map((tk, idx) => {
+    if (tk.type === 'space') return ' ';
+    if (tk.type === 'break') return <div key={'b' + idx} style={{ height: '0.7em' }} />;
+    if (tk.type === 'cue') {
+      return (
+        <div key={'c' + idx} style={{
+          display: 'flex', alignItems: 'center', gap: 10, margin: '0.15em 0 0.35em',
+          opacity: 0.9,
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: '0.34em', fontWeight: 700,
+            letterSpacing: '0.14em', textTransform: 'uppercase',
+            padding: '0.25em 0.7em', borderRadius: 999,
+            color: isCamera ? '#fff' : 'var(--accent)',
+            background: isCamera ? 'rgba(255,255,255,0.14)' : 'var(--accent-soft)',
+            border: isCamera ? '1px solid rgba(255,255,255,0.22)' : '1px solid transparent',
+          }}>{tk.label}</span>
+          <span style={{ flex: 1, height: 1, background: isCamera ? 'rgba(255,255,255,0.18)' : 'var(--border)' }} />
+        </div>
+      );
+    }
+    // word
+    wi = tk.wi;
+    const myIndex = tk.wi;
+    return (
+      <span key={'w' + idx} ref={wordRef(myIndex)} className="prompt-word">{tk.text}</span>
+    );
+  });
+
+  return (
+    <div
+      ref={viewportRef}
+      onWheel={onWheel}
+      style={{
+        position: 'relative', width: '100%', height: '100%', overflow: 'hidden',
+        ...colorVars,
+        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, #000 11%, #000 84%, transparent 100%)',
+        maskImage: 'linear-gradient(to bottom, transparent 0%, #000 11%, #000 84%, transparent 100%)',
+      }}>
+      {/* scroller */}
+      <div
+        ref={scrollerRef}
+        style={{
+          willChange: 'transform',
+          paddingBottom: '60vh',
+          margin: '0 auto',
+          maxWidth: maxWidth + 'em',
+          fontFamily: 'var(--font-mono)',
+          fontSize: fontSize + 'px',
+          lineHeight: lineHeight,
+          fontWeight: weight,
+          textAlign: align,
+          letterSpacing: '-0.01em',
+          textWrap: 'pretty',
+          transform: `scaleX(${mirrorH ? -1 : 1}) scaleY(${mirrorV ? -1 : 1})`,
+          transformOrigin: 'center',
+        }}>
+        {content}
+      </div>
+
+      {/* focus indicator */}
+      <FocusIndicator style={focusStyle} color={focusColor} pct={focusPct} isCamera={isCamera} />
+
+      {/* voice meter — "listening" indicator */}
+      {mode === 'voice' && (
+        <div style={{
+          position: 'absolute', top: 14, right: 18,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '5px 11px 5px 10px', borderRadius: 999,
+          background: isCamera ? 'rgba(0,0,0,0.4)' : 'var(--surface-2)',
+          border: isCamera ? '1px solid rgba(255,255,255,0.16)' : '1px solid var(--border)',
+          pointerEvents: 'none', opacity: playing ? 1 : 0.5, transition: 'opacity 200ms',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2.5, height: 16 }}>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <span key={i} ref={(el) => { meterBars.current[i] = el; }} style={{
+                width: 2.5, height: 16, borderRadius: 2, transformOrigin: 'center',
+                transform: 'scaleY(0.2)',
+                background: isCamera ? 'rgba(255,255,255,0.9)' : 'var(--accent)',
+              }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 600,
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+            color: isCamera ? 'rgba(255,255,255,0.85)' : 'var(--accent)' }}>
+            {playing ? 'Listening' : 'Voice'}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+});
+
+function FocusIndicator({ style, color, pct, isCamera }) {
+  if (style === 'off') return null;
+  const top = `calc(${pct * 100}% )`;
+  const lineColor = isCamera ? 'rgba(255,255,255,0.5)' : color;
+  if (style === 'bar') {
+    return <div style={{
+      position: 'absolute', left: 0, right: 0, top,
+      transform: 'translateY(-50%)', height: '1.5em',
+      background: isCamera ? 'rgba(255,255,255,0.07)' : 'var(--accent-faint)',
+      borderTop: `1px solid ${lineColor}`, borderBottom: `1px solid ${lineColor}`,
+      pointerEvents: 'none',
+    }} />;
+  }
+  if (style === 'arrows') {
+    const tri = (dir) => (
+      <span style={{
+        width: 0, height: 0,
+        borderTop: '9px solid transparent', borderBottom: '9px solid transparent',
+        [dir === 'l' ? 'borderLeft' : 'borderRight']: `13px solid ${lineColor}`,
+      }} />
+    );
+    return <div style={{
+      position: 'absolute', left: 0, right: 0, top, transform: 'translateY(-50%)',
+      display: 'flex', justifyContent: 'space-between', padding: '0 10px', pointerEvents: 'none',
+    }}>{tri('r')}{tri('l')}</div>;
+  }
+  // line
+  return <div style={{
+    position: 'absolute', left: '6%', right: '6%', top, height: 2,
+    transform: 'translateY(-50%)', background: lineColor, borderRadius: 2,
+    pointerEvents: 'none', opacity: 0.85,
+  }} />;
+}
+
+Object.assign(window, { PrompterCanvas });
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React, Icon, Button, IconButton, Pill, StatusTag, Eyebrow, wordCount, readTime */
+// LibraryScreen — script home. Sidebar of folders + grid of script cards.
+
+const { useState: useStateLib, useMemo: useMemoLib } = React;
+
+const ACCENT_OPTIONS = ['lavender', 'sky', 'sage', 'peach', 'butter', 'rose'];
+
+function snippet(body) {
+  const text = body.split('\n').map(l => l.trim()).filter(l => l && !/^\[\[.+\]\]$/.test(l)).join(' ');
+  return text.length > 132 ? text.slice(0, 132).trimEnd() + '…' : text;
+}
+
+function NewScriptModal({ onSave, onCancel }) {
+  const { useState: useStateNS } = React;
+  const [title, setTitle] = useStateNS('');
+  const [folder, setFolder] = useStateNS('');
+  const [body, setBody] = useStateNS('');
+  const [accent, setAccent] = useStateNS('lavender');
+
+  const handleSave = () => {
+    if (!title.trim() || !body.trim()) return;
+    onSave({ title: title.trim(), folder: folder.trim() || 'My Scripts', body: body.trim(), accent });
+  };
+
+  const inputStyle = {
+    fontFamily: 'var(--font-mono)', fontSize: 13.5, padding: '9px 12px',
+    borderRadius: 'var(--r-input)', border: '1px solid var(--border)',
+    background: 'var(--surface)', color: 'var(--ink-1)', outline: 'none', width: '100%',
+    boxSizing: 'border-box', transition: 'border-color var(--dur-fast)',
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.45)',
+    }}>
+      <div style={{
+        width: 580, background: 'var(--surface)', borderRadius: 12,
+        border: '1px solid var(--border)', padding: 28, boxShadow: 'var(--shadow-pop)',
+        display: 'flex', flexDirection: 'column', gap: 16,
+      }}>
+        <div>
+          <h2 style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 18, color: 'var(--ink-1)' }}>New script</h2>
+          <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--ink-3)' }}>
+            Use <code style={{ background: 'var(--surface-3)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>[[Cue label]]</code> on its own line to add jump points.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 2 }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', display: 'block', marginBottom: 5 }}>TITLE</label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Product launch script"
+              style={inputStyle} autoFocus />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', display: 'block', marginBottom: 5 }}>FOLDER</label>
+            <input value={folder} onChange={e => setFolder(e.target.value)}
+              placeholder="e.g. YouTube"
+              style={inputStyle} />
+          </div>
+        </div>
+
+        <div>
+          <label style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)', display: 'block', marginBottom: 5 }}>SCRIPT</label>
+          <textarea value={body} onChange={e => setBody(e.target.value)}
+            placeholder={'[[Intro]]\nYour script goes here...\n\n[[Section 2]]\nKeep each paragraph on its own line for best results.'}
+            style={{ ...inputStyle, height: 200, resize: 'vertical', lineHeight: 1.7 }} />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-3)' }}>COLOR</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {ACCENT_OPTIONS.map(a => (
+              <button key={a} onClick={() => setAccent(a)} style={{
+                width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+                background: `var(--pill-${a})`, border: accent === a ? '2px solid var(--ink-1)' : '2px solid transparent',
+                outline: 'none',
+              }} title={a} />
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button onClick={handleSave}
+            style={{ opacity: (!title.trim() || !body.trim()) ? 0.45 : 1, cursor: (!title.trim() || !body.trim()) ? 'default' : 'pointer' }}>
+            <Icon name="check" size={14} /> Save script
+          </Button>
         </div>
       </div>
     </div>
+  );
+}
 
-    <div class="editor-wrap">
-      <textarea id="script-input"
-        placeholder="Paste or type your script here…"
-        spellcheck="true"></textarea>
-    </div>
+function LibraryScreen({ scripts, wpm, onOpen, onRecord, onAddScript, onDeleteScript }) {
+  const [filter, setFilter] = useStateLib('all');
+  const [query, setQuery] = useStateLib('');
+  const [favs, setFavs] = useStateLib(() => Object.fromEntries(scripts.map(s => [s.id, s.favorite])));
+  const [newOpen, setNewOpen] = useStateLib(false);
 
-    <div class="bottom-bar">
-      <span id="word-count" class="dim">0 words</span>
-      <div class="speed-row">
-        <span class="dim">Speed</span>
-        <input type="range" id="speed-slider" min="0.4" max="3" step="0.05" value="1">
-        <span id="speed-label" class="dim">1.0×</span>
-      </div>
-      <button id="start-btn" class="start-btn" disabled>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round">
-          <rect x="9" y="2" width="6" height="12" rx="3"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-          <line x1="12" y1="19" x2="12" y2="22"/>
-          <line x1="8"  y1="22" x2="16" y2="22"/>
-        </svg>
-        Start
+  // sync favs when scripts list changes (e.g. new script added)
+  React.useEffect(() => {
+    setFavs(prev => {
+      const next = { ...prev };
+      scripts.forEach(s => { if (!(s.id in next)) next[s.id] = s.favorite || false; });
+      return next;
+    });
+  }, [scripts]);
+
+  const folders = useMemoLib(() => {
+    const set = [];
+    scripts.forEach(s => { if (!set.includes(s.folder)) set.push(s.folder); });
+    return set;
+  }, [scripts]);
+
+  const counts = useMemoLib(() => {
+    const c = { all: scripts.length, fav: scripts.filter(s => favs[s.id]).length };
+    folders.forEach(f => c[f] = scripts.filter(s => s.folder === f).length);
+    return c;
+  }, [favs, folders, scripts]);
+
+  const list = scripts.filter(s => {
+    if (filter === 'fav' && !favs[s.id]) return false;
+    if (filter !== 'all' && filter !== 'fav' && s.folder !== filter) return false;
+    if (query && !(s.title + ' ' + s.body + ' ' + s.folder).toLowerCase().includes(query.toLowerCase())) return false;
+    return true;
+  });
+
+  const navItem = (id, label, count) => {
+    const active = filter === id;
+    return (
+      <button key={id} onClick={() => setFilter(id)} style={{
+        display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+        border: 'none', borderRadius: 'var(--r-input)', padding: '7px 11px', cursor: 'pointer',
+        background: active ? 'var(--accent-soft)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--ink-1)',
+        fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: active ? 600 : 500,
+        transition: 'background var(--dur-fast) var(--ease)',
+      }}>
+        <span style={{ flex: 1 }}>{label}</span>
+        <span style={{ color: active ? 'var(--accent)' : 'var(--ink-3)', fontSize: 12 }}>{count}</span>
       </button>
+    );
+  };
+
+  const handleNewScript = (data) => {
+    const newScript = {
+      id: 'user-' + Date.now(),
+      title: data.title,
+      folder: data.folder,
+      body: data.body,
+      accent: data.accent,
+      status: 'draft',
+      favorite: false,
+      updated: 'Just now',
+    };
+    onAddScript(newScript);
+    setNewOpen(false);
+    // Switch filter to show the new script's folder
+    setFilter(data.folder || 'My Scripts');
+  };
+
+  return (
+    <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+      {/* sidebar */}
+      <aside style={{
+        width: 208, flexShrink: 0, borderRight: '1px solid var(--border)',
+        padding: '18px 12px', display: 'flex', flexDirection: 'column', gap: 4,
+        background: 'var(--paper)', overflowY: 'auto',
+      }}>
+        <Eyebrow style={{ padding: '4px 11px 8px' }}>Library</Eyebrow>
+        {navItem('all', 'All scripts', counts.all)}
+        {navItem('fav', '★ Favorites', counts.fav)}
+        <Eyebrow style={{ padding: '18px 11px 8px' }}>Folders</Eyebrow>
+        {folders.map(f => navItem(f, f, counts[f]))}
+        <div style={{ flex: 1 }} />
+        <button style={{
+          display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none',
+          color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', fontSize: 12.5, cursor: 'pointer',
+          padding: '7px 11px', textAlign: 'left',
+        }} onClick={() => setNewOpen(true)}>
+          <Icon name="plus" size={14} /> New folder
+        </button>
+      </aside>
+
+      {/* main */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* toolbar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, padding: '16px 28px',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <div>
+            <h1 style={{ margin: 0, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 19, color: 'var(--ink-1)' }}>
+              {filter === 'all' ? 'All scripts' : filter === 'fav' ? 'Favorites' : filter}
+            </h1>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+              {list.length} {list.length === 1 ? 'script' : 'scripts'}
+            </div>
+          </div>
+          <div style={{ flex: 1, maxWidth: 360, marginLeft: 'auto' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)',
+              background: 'var(--surface)', borderRadius: 'var(--r-input)', padding: '7px 12px',
+            }}>
+              <Icon name="search" size={15} style={{ color: 'var(--ink-3)' }} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search scripts…"
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--ink-1)' }} />
+            </div>
+          </div>
+          <Button onClick={() => setNewOpen(true)}><Icon name="plus" size={15} /> New script</Button>
+        </div>
+
+        {/* grid */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '22px 28px 40px' }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(296px, 1fr))', gap: 16,
+          }}>
+            {list.map(s => (
+              <ScriptCard key={s.id} s={s} wpm={wpm}
+                fav={!!favs[s.id]}
+                onFav={() => setFavs(f => ({ ...f, [s.id]: !f[s.id] }))}
+                onOpen={() => onOpen(s)} onRecord={() => onRecord(s)}
+                onDelete={onDeleteScript ? () => onDeleteScript(s.id) : null} />
+            ))}
+          </div>
+          {list.length === 0 && (
+            <div style={{ padding: '80px 0', textAlign: 'center', color: 'var(--ink-3)',
+              fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+              {query ? `No scripts match "${query}".` : 'No scripts here yet.'}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {newOpen && <NewScriptModal onSave={handleNewScript} onCancel={() => setNewOpen(false)} />}
     </div>
+  );
+}
 
-  </div>
+function ScriptCard({ s, wpm, fav, onFav, onOpen, onRecord, onDelete }) {
+  const [hover, setHover] = useStateLib(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      onClick={onOpen}
+      style={{
+        position: 'relative', background: 'var(--surface)',
+        border: `1px solid ${hover ? 'var(--border-strong)' : 'var(--border)'}`,
+        borderRadius: 'var(--r-card)', padding: 20, cursor: 'pointer',
+        display: 'flex', flexDirection: 'column', gap: 12, minHeight: 184,
+        transition: 'border-color var(--dur-fast) var(--ease)',
+      }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <Pill tone={s.accent} size="sm">{s.folder}</Pill>
+        <div style={{ flex: 1 }} />
+        <button onClick={(e) => { e.stopPropagation(); onFav(); }} style={{
+          background: 'transparent', border: 'none', cursor: 'pointer', padding: 2,
+          color: fav ? 'var(--accent)' : 'var(--ink-3)', display: 'flex',
+        }} title={fav ? 'Unfavorite' : 'Favorite'}>
+          <Icon name={fav ? 'star-fill' : 'star'} size={17} />
+        </button>
+      </div>
 
-  <!-- ─────────── Teleprompter Screen ─────────── -->
-  <div id="teleprompter-screen" class="screen">
+      <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, lineHeight: 1.35,
+        color: 'var(--ink-1)', letterSpacing: '-0.01em' }}>{s.title}</div>
 
-    <div id="reading-line"></div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.65, color: 'var(--ink-2)',
+        flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {snippet(s.body)}
+      </div>
 
-    <div id="scroll-container">
-      <div id="scroll-wrapper">
-        <p id="script-text"></p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontFamily: 'var(--font-mono)',
+        fontSize: 11.5, color: 'var(--ink-3)', borderTop: '1px solid var(--border-faint)', paddingTop: 11 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon name="type" size={13} /> {wordCount(s.body)} words
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon name="clock" size={13} /> {readTime(s.body, wpm)}
+        </span>
+        <div style={{ flex: 1 }} />
+        <StatusTag status={s.status} />
+      </div>
+
+      {/* hover actions */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 'var(--r-card)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 8, padding: 16,
+        opacity: hover ? 1 : 0, pointerEvents: hover ? 'auto' : 'none',
+        background: 'linear-gradient(to top, color-mix(in srgb, var(--surface) 82%, transparent), transparent 46%)',
+        transition: 'opacity var(--dur-base) var(--ease)',
+      }}>
+        {onDelete && (
+          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 6px',
+            color: 'var(--ink-3)', display: 'flex', borderRadius: 'var(--r-input)',
+            marginRight: 'auto',
+          }} title="Delete script">
+            <Icon name="square" size={15} />
+          </button>
+        )}
+        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
+          <Icon name="eye" size={14} /> Prompter
+        </Button>
+        <Button size="sm" onClick={(e) => { e.stopPropagation(); onRecord(); }}>
+          <Icon name="record" size={12} /> Record
+        </Button>
       </div>
     </div>
+  );
+}
 
-    <!-- Hover-reveal overlay (top-right) -->
-    <div id="overlay">
-      <div id="overlay-controls">
-        <span class="dim overlay-label">Speed</span>
-        <input type="range" id="overlay-speed" min="0.4" max="3" step="0.05" value="1">
-        <span id="overlay-speed-label" class="dim">1.0×</span>
-        <button class="ctrl-btn" id="reset-btn">↺&nbsp;Reset</button>
-        <button class="ctrl-btn danger" id="stop-btn">✕&nbsp;Stop</button>
+Object.assign(window, { LibraryScreen });
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React, Icon, IconButton, Button, Pill, PrompterCanvas, TransportHUD, tokenize, fmtTime */
+// ReaderScreen — full-window on-screen teleprompter. Follows the app theme
+// (warm paper in light, near-black in dark). Floating transport HUD.
+
+const { useState: useStateRd, useEffect: useEffectRd, useRef: useRefRd, useMemo: useMemoRd } = React;
+
+function useKeyboard(session, setSession, canvasRef) {
+  useEffectRd(() => {
+    const onKey = (e) => {
+      if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+      if (e.code === 'Space') { e.preventDefault(); setSession(s => ({ ...s, playing: !s.playing })); }
+      else if (e.code === 'KeyR') { canvasRef.current && canvasRef.current.restart(); setSession(s => ({ ...s, playing: false })); }
+      else if (e.code === 'KeyM') { setSession(s => ({ ...s, mirrorH: !s.mirrorH })); }
+      else if (e.code === 'ArrowDown') { e.preventDefault(); canvasRef.current && canvasRef.current.nudge(60); }
+      else if (e.code === 'ArrowUp') { e.preventDefault(); canvasRef.current && canvasRef.current.nudge(-60); }
+      else if (e.code === 'ArrowRight') { setSession(s => ({ ...s, wpm: Math.min(260, s.wpm + 10) })); }
+      else if (e.code === 'ArrowLeft') { setSession(s => ({ ...s, wpm: Math.max(60, s.wpm - 10) })); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setSession, canvasRef]);
+}
+
+function ReaderScreen({ script, session, setSession, tweaks, onBack, onRecord }) {
+  const canvasRef = useRefRd(null);
+  const data = useMemoRd(() => tokenize(script.body), [script]);
+  const [prog, setProg] = useStateRd({ frac: 0, elapsed: 0, total: 1, cue: -1 });
+  useKeyboard(session, setSession, canvasRef);
+
+  return (
+    <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column',
+      background: 'var(--paper)', minHeight: 0 }}>
+      {/* top bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14, padding: '12px 18px', zIndex: 10,
+        borderBottom: '1px solid var(--border-faint)',
+      }}>
+        <IconButton name="back" title="Back to library" onClick={onBack} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <Pill tone={script.accent} size="sm">{script.folder}</Pill>
+          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14, color: 'var(--ink-1)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{script.title}</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'inline-flex', padding: 3, borderRadius: 'var(--r-pill)', gap: 2,
+          background: 'var(--surface-3)', border: '1px solid var(--border-faint)' }}>
+          {[{ id: 'reader', label: 'Prompter', icon: 'eye' }, { id: 'record', label: 'Record', icon: 'record' }].map(t => {
+            const active = t.id === 'reader';
+            return <button key={t.id} onClick={() => { if (t.id === 'record') onRecord(); }} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer',
+              padding: '5px 13px', borderRadius: 'var(--r-pill)', fontFamily: 'var(--font-mono)', fontSize: 12.5,
+              fontWeight: active ? 600 : 500,
+              background: active ? 'var(--surface)' : 'transparent', color: active ? 'var(--ink-1)' : 'var(--ink-2)',
+              boxShadow: active ? 'var(--shadow-float)' : 'none',
+            }}><Icon name={t.icon} size={13} />{t.label}</button>;
+          })}
+        </div>
+        <IconButton name="mirror" title="Mirror (M)" active={session.mirrorH} onClick={() => setSession(s => ({ ...s, mirrorH: !s.mirrorH }))} />
       </div>
-      <div id="mic-dot" title="Microphone active"></div>
+
+      {/* prompter */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <PrompterCanvas
+          ref={canvasRef}
+          tokens={data.tokens} totalWords={data.totalWords} cues={data.cues}
+          wpm={session.wpm} mode={session.mode} playing={session.playing}
+          mirrorH={session.mirrorH} mirrorV={session.mirrorV}
+          fontSize={session.fontSize} lineHeight={tweaks.lineHeight}
+          align={tweaks.align} maxWidth={tweaks.maxWidth}
+          focusStyle={tweaks.focusStyle} focusColor={tweaks.focusColor} focusPct={tweaks.focusPct}
+          variant="screen"
+          onProgress={(frac, el, tot, active) => setProg(p => ({ ...p, frac, elapsed: el, total: tot }))}
+          onActiveCue={(ci) => setProg(p => ({ ...p, cue: ci }))}
+          onEnd={() => setSession(s => ({ ...s, playing: false }))}
+        />
+      </div>
+
+      {/* transport */}
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 18, display: 'flex', justifyContent: 'center', zIndex: 20 }}>
+        <TransportHUD
+          mode={session.mode} onMode={(m) => setSession(s => ({ ...s, mode: m }))}
+          playing={session.playing} onPlay={() => setSession(s => ({ ...s, playing: !s.playing }))}
+          onRestart={() => { canvasRef.current && canvasRef.current.restart(); setSession(s => ({ ...s, playing: false })); }}
+          wpm={session.wpm} onWpm={(w) => setSession(s => ({ ...s, wpm: w }))}
+          fontSize={session.fontSize} onFont={(f) => setSession(s => ({ ...s, fontSize: f }))}
+          elapsed={prog.elapsed} total={prog.total} fraction={prog.frac} fmt={fmtTime}
+          cues={data.cues} activeCue={prog.cue}
+          onJumpCue={(wi) => canvasRef.current && canvasRef.current.seekWord(wi)}
+          dark={false}
+        />
+      </div>
     </div>
+  );
+}
 
-    <!-- Keyboard hint (fades out after 3 s) -->
-    <div id="kb-hint">Esc to stop &nbsp;·&nbsp; R to reset</div>
+Object.assign(window, { ReaderScreen, useKeyboard });
 
-  </div>
+})();
+</script>
 
-  <script src="app.js"></script>
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React, Icon, IconButton, Button, Pill, PrompterCanvas, TransportHUD, useKeyboard, tokenize, fmtTime */
+// RecordingScreen — camera preview with the prompter overlaid near the lens.
+
+const { useState: useStateRec, useEffect: useEffectRec, useRef: useRefRec, useMemo: useMemoRec } = React;
+
+const ASPECTS = [
+  { id: '16:9', label: '16:9', ratio: 16 / 9 },
+  { id: '9:16', label: '9:16', ratio: 9 / 16 },
+  { id: '1:1', label: '1:1', ratio: 1 },
+];
+
+function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompter }) {
+  const canvasRef = useRefRec(null);
+  const videoRef = useRefRec(null);
+  const data = useMemoRec(() => tokenize(script.body), [script]);
+  const [prog, setProg] = useStateRec({ frac: 0, elapsed: 0, total: 1, cue: -1 });
+  const [cam, setCam] = useStateRec('pending'); // pending | live | off
+  const [aspect, setAspect] = useStateRec('16:9');
+  const [grid, setGrid] = useStateRec(true);
+  const [recState, setRecState] = useStateRec('idle'); // idle | countdown | recording
+  const [count, setCount] = useStateRec(3);
+  const [recSecs, setRecSecs] = useStateRec(0);
+  const [takes, setTakes] = useStateRec([]);
+  const recTimer = useRefRec(null);
+  const cdTimer = useRefRec(null);
+
+  useKeyboard(session, setSession, canvasRef);
+
+  // webcam
+  useEffectRec(() => {
+    let stream;
+    let cancelled = false;
+    // If getUserMedia hangs (macOS permission dialog not shown / denied silently),
+    // fall back to 'off' after 2s so the UI never stays stuck at "Connecting…"
+    const timeout = setTimeout(() => { if (!cancelled) setCam('off'); }, 2000);
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        clearTimeout(timeout);
+        if (!cancelled && videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+          setCam('live');
+        }
+      } catch (e) { clearTimeout(timeout); if (!cancelled) setCam('off'); }
+    })();
+    return () => { cancelled = true; clearTimeout(timeout); if (stream) stream.getTracks().forEach(t => t.stop()); };
+  }, []);
+
+  function startCountdown() {
+    canvasRef.current && canvasRef.current.restart();
+    setRecState('countdown');
+    let c = 3; setCount(c);
+    cdTimer.current = setInterval(() => {
+      c -= 1;
+      if (c <= 0) { clearInterval(cdTimer.current); setCount(0); beginRecording(); }
+      else setCount(c);
+    }, 800);
+  }
+  function beginRecording() {
+    setRecState('recording'); setRecSecs(0);
+    setSession(s => ({ ...s, playing: true }));
+    recTimer.current = setInterval(() => setRecSecs(s => s + 1), 1000);
+  }
+  function stopRecording() {
+    clearInterval(recTimer.current);
+    setSession(s => ({ ...s, playing: false }));
+    setTakes(t => [{ id: Date.now(), dur: recSecs, accent: script.accent }, ...t].slice(0, 6));
+    setRecState('idle');
+  }
+  function onRecButton() {
+    if (recState === 'idle') startCountdown();
+    else if (recState === 'recording') stopRecording();
+    else { clearInterval(cdTimer.current); setRecState('idle'); }
+  }
+  useEffectRec(() => () => { clearInterval(recTimer.current); clearInterval(cdTimer.current); }, []);
+
+  const ratio = ASPECTS.find(a => a.id === aspect).ratio;
+
+  return (
+    <div style={{ position: 'relative', height: '100%', background: '#0b0d12', overflow: 'hidden', minHeight: 0 }}>
+      {/* camera layer */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {cam === 'live'
+          ? <video ref={videoRef} muted playsInline style={{
+              width: '100%', height: '100%', objectFit: 'cover',
+              transform: `scaleX(${session.mirrorH ? 1 : -1})`,
+            }} />
+          : <CameraPlaceholder state={cam} ref={videoRef} mirror={session.mirrorH} />
+        }
+      </div>
+
+      {/* aspect framing mask + grid */}
+      <FramingMask ratio={ratio} grid={grid} />
+
+      {/* prompter overlay near top (lens) */}
+      <div style={{
+        position: 'absolute', top: 60, left: 0, right: 0, height: '50%',
+        padding: '0 7%', pointerEvents: session.mode === 'manual' ? 'auto' : 'none',
+        WebkitMaskImage: 'linear-gradient(to bottom, #000 70%, transparent 100%)',
+        maskImage: 'linear-gradient(to bottom, #000 70%, transparent 100%)',
+      }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0.12))' }} />
+        <div style={{ position: 'relative', height: '100%' }}>
+          <PrompterCanvas
+            ref={canvasRef}
+            tokens={data.tokens} totalWords={data.totalWords} cues={data.cues}
+            wpm={session.wpm} mode={session.mode} playing={session.playing}
+            mirrorH={false} mirrorV={false}
+            fontSize={Math.round(session.fontSize * 0.82)} lineHeight={tweaks.lineHeight}
+            align="center" maxWidth={tweaks.maxWidth}
+            focusStyle={tweaks.focusStyle} focusColor={tweaks.focusColor} focusPct={0.46}
+            variant="camera"
+            onProgress={(frac, el, tot) => setProg(p => ({ ...p, frac, elapsed: el, total: tot }))}
+            onActiveCue={(ci) => setProg(p => ({ ...p, cue: ci }))}
+            onEnd={() => { if (recState === 'recording') stopRecording(); }}
+          />
+        </div>
+      </div>
+
+      {/* top toolbar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+        background: 'linear-gradient(to bottom, rgba(0,0,0,0.5), transparent)',
+      }}>
+        <button onClick={onBack} title="Back to library" style={glassBtn()}>
+          <Icon name="back" size={18} />
+        </button>
+        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 13, color: '#fff',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 280 }}>{script.title}</span>
+        <div style={{ flex: 1 }} />
+
+        {/* mode toggle */}
+        <div style={{ display: 'inline-flex', padding: 3, borderRadius: 999, gap: 2,
+          background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}>
+          {[{ id: 'reader', label: 'Prompter', icon: 'eye' }, { id: 'record', label: 'Record', icon: 'record' }].map(t => {
+            const active = t.id === 'record';
+            return <button key={t.id} onClick={() => { if (t.id === 'reader') onPrompter(); }} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer',
+              padding: '5px 13px', borderRadius: 999, fontFamily: 'var(--font-mono)', fontSize: 12.5,
+              fontWeight: active ? 600 : 500,
+              background: active ? '#fff' : 'transparent', color: active ? '#13151c' : 'rgba(255,255,255,0.75)',
+            }}><Icon name={t.icon} size={13} />{t.label}</button>;
+          })}
+        </div>
+
+        {/* aspect */}
+        <div style={{ display: 'inline-flex', padding: 3, borderRadius: 999, gap: 2,
+          background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}>
+          {ASPECTS.map(a => (
+            <button key={a.id} onClick={() => setAspect(a.id)} style={{
+              border: 'none', cursor: 'pointer', padding: '5px 11px', borderRadius: 999,
+              fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: aspect === a.id ? 600 : 500,
+              background: aspect === a.id ? '#fff' : 'transparent', color: aspect === a.id ? '#13151c' : 'rgba(255,255,255,0.75)',
+            }}>{a.label}</button>
+          ))}
+        </div>
+        <button onClick={() => setGrid(g => !g)} title="Rule-of-thirds grid"
+          style={glassBtn(grid)}><Icon name="aspect" size={17} /></button>
+        <button onClick={() => setSession(s => ({ ...s, mirrorH: !s.mirrorH }))} title="Mirror camera"
+          style={glassBtn(session.mirrorH)}><Icon name="mirror" size={17} /></button>
+      </div>
+
+      {/* device + status row (top under toolbar, left) */}
+      <div style={{ position: 'absolute', top: 56, left: 16, zIndex: 25, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <DevicePill icon="camera" label={cam === 'live' ? 'FaceTime HD Camera' : cam === 'off' ? 'No camera' : 'Connecting…'} />
+        <DevicePill icon="mic" label="MacBook Pro Mic" />
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.65)',
+          background: 'rgba(0,0,0,0.4)', padding: '4px 9px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)' }}>1080p · 30fps</span>
+      </div>
+
+      {/* takes tray */}
+      {takes.length > 0 && (
+        <div style={{ position: 'absolute', top: 96, right: 16, zIndex: 25, width: 132,
+          display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Takes · {takes.length}</div>
+          {takes.map((tk, i) => (
+            <div key={tk.id} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{ width: 56, height: 34, borderRadius: 5, flexShrink: 0,
+                background: `linear-gradient(135deg, var(--pill-${tk.accent}), rgba(0,0,0,0.5))`,
+                border: '1px solid rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="play" size={13} style={{ color: 'rgba(255,255,255,0.9)' }} />
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#fff', lineHeight: 1.3 }}>
+                <div>Take {takes.length - i}</div>
+                <div style={{ color: 'rgba(255,255,255,0.55)' }}>{fmtTime(tk.dur)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* countdown */}
+      {recState === 'countdown' && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', background: 'rgba(0,0,0,0.35)' }}>
+          <div key={count} style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 140, color: '#fff',
+            animation: 'cuePop 0.8s var(--ease)' }}>{count}</div>
+        </div>
+      )}
+
+      {/* recording indicator */}
+      {recState === 'recording' && (
+        <div style={{ position: 'absolute', top: 96, left: '50%', transform: 'translateX(-50%)', zIndex: 35,
+          display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999,
+          background: 'rgba(224,70,59,0.92)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600 }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#fff', animation: 'cueBlink 1s infinite' }} />
+          REC {fmtTime(recSecs)}
+        </div>
+      )}
+
+      {/* bottom controls */}
+      <div style={{ position: 'absolute', left: 16, right: 16, bottom: 18, zIndex: 30,
+        display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, flexWrap: 'nowrap' }}>
+        <button onClick={onRecButton} title={recState === 'recording' ? 'Stop' : 'Record'} style={{
+          width: 54, height: 54, borderRadius: '50%', cursor: 'pointer', flexShrink: 0,
+          border: '3px solid rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.35)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{
+            width: recState === 'recording' ? 18 : 38, height: recState === 'recording' ? 18 : 38,
+            borderRadius: recState === 'recording' ? 4 : '50%', background: '#E0463B',
+            transition: 'all var(--dur-base) var(--ease)',
+          }} />
+        </button>
+        <div style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+        <TransportHUD
+          mode={session.mode} onMode={(m) => setSession(s => ({ ...s, mode: m }))}
+          playing={session.playing} onPlay={() => setSession(s => ({ ...s, playing: !s.playing }))}
+          onRestart={() => { canvasRef.current && canvasRef.current.restart(); setSession(s => ({ ...s, playing: false })); }}
+          wpm={session.wpm} onWpm={(w) => setSession(s => ({ ...s, wpm: w }))}
+          fontSize={session.fontSize} onFont={(f) => setSession(s => ({ ...s, fontSize: f }))}
+          elapsed={prog.elapsed} total={prog.total} fraction={prog.frac} fmt={fmtTime}
+          cues={data.cues} activeCue={prog.cue}
+          onJumpCue={(wi) => canvasRef.current && canvasRef.current.seekWord(wi)}
+          dark={true}
+        />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function glassBtn(active) {
+  return {
+    width: 32, height: 32, borderRadius: 'var(--r-input)', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    border: `1px solid ${active ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.14)'}`,
+    background: active ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)',
+    color: '#fff',
+  };
+}
+
+function DevicePill({ icon, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)',
+      fontSize: 11, color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.4)', padding: '4px 9px',
+      borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)' }}>
+      <Icon name={icon} size={13} />{label}<Icon name="chevron" size={11} style={{ opacity: 0.6 }} />
+    </span>
+  );
+}
+
+const CameraPlaceholder = React.forwardRef(function CameraPlaceholder({ state, mirror }, ref) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, background:
+      'radial-gradient(120% 90% at 50% 28%, #2a2f3d 0%, #161a24 55%, #0b0d12 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* hidden video kept for ref consistency */}
+      <video ref={ref} style={{ display: 'none' }} />
+      {/* subject framing guide */}
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
+        transform: 'translateY(6%)' }}>
+        <div style={{ width: 150, height: 188, borderRadius: '50% 50% 48% 48% / 56% 56% 44% 44%',
+          border: '2px dashed rgba(255,255,255,0.22)' }} />
+        <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.55)' }}>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 4 }}>
+            {state === 'off' ? 'Camera unavailable' : 'Connecting to camera…'}
+          </div>
+          <div style={{ fontSize: 11.5 }}>
+            {state === 'off' ? 'Allow camera access to see your framing.' : 'One moment.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+function FramingMask({ ratio, grid }) {
+  const ref = useRefRec(null);
+  const [box, setBox] = useStateRec(null);
+  useEffectRec(() => {
+    function compute() {
+      const el = ref.current; if (!el) return;
+      const W = el.clientWidth, H = el.clientHeight;
+      let w = W, h = W / ratio;
+      if (h > H) { h = H; w = H * ratio; }
+      // leave a margin
+      const scale = 0.9; w *= scale; h *= scale;
+      setBox({ w, h, left: (W - w) / 2, top: (H - h) / 2 });
+    }
+    compute();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(compute) : null;
+    if (ro && ref.current) ro.observe(ref.current);
+    window.addEventListener('resize', compute);
+    return () => { ro && ro.disconnect(); window.removeEventListener('resize', compute); };
+  }, [ratio]);
+  return (
+    <div ref={ref} style={{ position: 'absolute', inset: 0, zIndex: 15, pointerEvents: 'none' }}>
+      {box && (
+        <div style={{ position: 'absolute', left: box.left, top: box.top, width: box.w, height: box.h,
+          boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 2 }}>
+          {grid && <>
+            {[1, 2].map(i => <div key={'v' + i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(i * 100) / 3}%`, width: 1, background: 'rgba(255,255,255,0.22)' }} />)}
+            {[1, 2].map(i => <div key={'h' + i} style={{ position: 'absolute', left: 0, right: 0, top: `${(i * 100) / 3}%`, height: 1, background: 'rgba(255,255,255,0.22)' }} />)}
+          </>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { RecordingScreen });
+
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+;(function(){
+/* global React, useTweaks, TweaksPanel, TweakSection, TweakSlider, TweakToggle, TweakRadio, TweakColor,
+          LibraryScreen, ReaderScreen, RecordingScreen, Icon, DEFAULT_SCRIPTS, readTime */
+
+const { useState: useStateApp, useEffect: useEffectApp } = React;
+
+const TWEAK_DEFAULTS = {
+  dark: false,
+  accent: '#2B6CFF',
+  focusStyle: 'line',
+  focusColor: '#2B6CFF',
+  focusPct: 0.42,
+  lineHeight: 1.45,
+  maxWidth: 18,
+  align: 'left',
+};
+
+// localStorage helpers for user-created scripts
+function loadUserScripts() {
+  try { return JSON.parse(localStorage.getItem('cue-user-scripts') || '[]'); }
+  catch (e) { return []; }
+}
+function saveUserScripts(list) {
+  localStorage.setItem('cue-user-scripts', JSON.stringify(list));
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [view, setView] = useStateApp('library');
+  const [script, setScript] = useStateApp(null);
+  const [userScripts, setUserScripts] = useStateApp(loadUserScripts);
+  const [session, setSession] = useStateApp({
+    mode: 'voice', playing: false, wpm: 130, fontSize: 52, mirrorH: false, mirrorV: false,
+  });
+  const [tweakOpen, setTweakOpen] = useStateApp(false);
+
+  const allScripts = [...DEFAULT_SCRIPTS, ...userScripts];
+
+  // Sync theme
+  useEffectApp(() => {
+    document.documentElement.dataset.theme = t.dark ? 'dark' : 'light';
+    document.body.style.background = t.dark ? '#0F1117' : '#F0EBE2';
+  }, [t.dark]);
+
+  // Sync accent
+  useEffectApp(() => {
+    const r = document.documentElement.style;
+    r.setProperty('--accent', t.accent);
+    r.setProperty('--accent-hover', `color-mix(in srgb, ${t.accent} 82%, #000)`);
+    r.setProperty('--accent-soft', `color-mix(in srgb, ${t.accent} 12%, transparent)`);
+    r.setProperty('--accent-faint', `color-mix(in srgb, ${t.accent} 6%, transparent)`);
+  }, [t.accent]);
+
+  // Listen for tweaks panel close events
+  useEffectApp(() => {
+    const h = (e) => {
+      if (e.data?.type === '__edit_mode_dismissed') setTweakOpen(false);
+    };
+    window.addEventListener('message', h);
+    return () => window.removeEventListener('message', h);
+  }, []);
+
+  const toggleTweaks = () => {
+    const next = !tweakOpen;
+    setTweakOpen(next);
+    window.postMessage({ type: next ? '__activate_edit_mode' : '__deactivate_edit_mode' }, '*');
+  };
+
+  const go = (v, s) => {
+    setSession(prev => ({ ...prev, playing: false }));
+    if (s) setScript(s);
+    setView(v);
+  };
+
+  const addScript = (newScript) => {
+    const updated = [...userScripts, newScript];
+    setUserScripts(updated);
+    saveUserScripts(updated);
+  };
+
+  const deleteScript = (id) => {
+    // Only allow deleting user-created scripts
+    const updated = userScripts.filter(s => s.id !== id);
+    setUserScripts(updated);
+    saveUserScripts(updated);
+  };
+
+  const tweaks = {
+    focusStyle: t.focusStyle, focusColor: t.focusColor, focusPct: t.focusPct,
+    lineHeight: t.lineHeight, maxWidth: t.maxWidth, align: t.align,
+  };
+
+  const titleText = view === 'library' ? null : (script ? script.title : null);
+  const isRecord = view === 'record';
+
+  const titleBarStyle = {
+    height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14,
+    padding: '0 16px 0 80px', // 80px left = room for macOS traffic lights
+    borderBottom: `1px solid ${isRecord ? 'rgba(255,255,255,0.06)' : 'var(--border-faint)'}`,
+    background: isRecord ? '#0b0d12' : 'var(--paper)',
+    position: 'relative', zIndex: 5,
+    WebkitAppRegion: 'drag',
+  };
+
+  const toolbarBtnStyle = {
+    display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer',
+    background: 'transparent', padding: '4px 9px', borderRadius: 999,
+    fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
+    color: isRecord ? 'rgba(255,255,255,0.75)' : 'var(--ink-2)',
+    WebkitAppRegion: 'no-drag',
+    transition: 'background var(--dur-fast)',
+  };
+
+  return (
+    <div style={{
+      height: '100vh', width: '100%', boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column',
+      background: 'var(--paper)',
+      overflow: 'hidden',
+      fontFamily: 'var(--font-mono)',
+    }}>
+      {/* ── Title bar ── */}
+      <div style={titleBarStyle}>
+        {/* Centered wordmark + script title */}
+        <div style={{
+          position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+          display: 'flex', alignItems: 'center', gap: 8,
+          WebkitAppRegion: 'no-drag',
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13.5,
+            color: isRecord ? '#fff' : 'var(--ink-1)',
+          }}>
+            Cue<span style={{ color: 'var(--accent)' }}>.</span>
+          </span>
+          {titleText && (
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 12.5, maxWidth: 320,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              color: isRecord ? 'rgba(255,255,255,0.5)' : 'var(--ink-3)',
+            }}>
+              — {titleText}
+            </span>
+          )}
+        </div>
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Right controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, WebkitAppRegion: 'no-drag' }}>
+          <button
+            onClick={() => setTweak('dark', !t.dark)}
+            title="Toggle theme"
+            style={toolbarBtnStyle}>
+            <Icon name={t.dark ? 'moon' : 'sun'} size={14} />
+            {t.dark ? 'Dark' : 'Light'}
+          </button>
+          <button
+            onClick={toggleTweaks}
+            title="Tweaks"
+            style={{
+              ...toolbarBtnStyle,
+              background: tweakOpen
+                ? (isRecord ? 'rgba(255,255,255,0.12)' : 'var(--accent-soft)')
+                : 'transparent',
+              color: tweakOpen
+                ? (isRecord ? '#fff' : 'var(--accent)')
+                : (isRecord ? 'rgba(255,255,255,0.75)' : 'var(--ink-2)'),
+            }}>
+            <Icon name="gear" size={14} /> Tweaks
+          </button>
+        </div>
+      </div>
+
+      {/* ── Screen content ── */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {view === 'library' && (
+          <LibraryScreen
+            scripts={allScripts}
+            wpm={session.wpm}
+            onOpen={(s) => go('reader', s)}
+            onRecord={(s) => go('record', s)}
+            onAddScript={addScript}
+            onDeleteScript={deleteScript}
+          />
+        )}
+        {view === 'reader' && script && (
+          <ReaderScreen
+            script={script} session={session} setSession={setSession} tweaks={tweaks}
+            onBack={() => go('library')} onRecord={() => go('record')}
+          />
+        )}
+        {view === 'record' && script && (
+          <RecordingScreen
+            script={script} session={session} setSession={setSession} tweaks={tweaks}
+            onBack={() => go('library')} onPrompter={() => go('reader')}
+          />
+        )}
+      </div>
+
+      {/* ── Tweaks panel (floating, toggled via title bar button) ── */}
+      <TweaksPanel title="Tweaks" isOpen={tweakOpen} onClose={() => setTweakOpen(false)}>
+        <TweakSection label="Theme" />
+        <TweakToggle label="Dark mode" value={t.dark} onChange={(v) => setTweak('dark', v)} />
+        <TweakColor label="Accent color" value={t.accent}
+          options={['#2B6CFF', '#E0463B', '#1F8A5B', '#7A5AE0', '#E8902A']}
+          onChange={(v) => setTweak('accent', v)} />
+
+        <TweakSection label="Reading view" />
+        <TweakRadio label="Focus marker" value={t.focusStyle}
+          options={['line', 'arrows', 'bar', 'off']} onChange={(v) => setTweak('focusStyle', v)} />
+        <TweakColor label="Marker color" value={t.focusColor}
+          options={['#2B6CFF', '#E0463B', '#1F8A5B', '#E8B23A', '#9A958C']}
+          onChange={(v) => setTweak('focusColor', v)} />
+        <TweakSlider label="Focus position" value={t.focusPct} min={0.2} max={0.6} step={0.02}
+          onChange={(v) => setTweak('focusPct', v)} />
+        <TweakSlider label="Line height" value={t.lineHeight} min={1.2} max={2} step={0.05}
+          onChange={(v) => setTweak('lineHeight', v)} />
+        <TweakSlider label="Column width" value={t.maxWidth} min={12} max={28} step={1} unit="em"
+          onChange={(v) => setTweak('maxWidth', v)} />
+        <TweakRadio label="Alignment" value={t.align}
+          options={['left', 'center']} onChange={(v) => setTweak('align', v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+})();
+</script>
+
+
 </body>
 </html>
