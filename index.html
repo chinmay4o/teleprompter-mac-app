@@ -29,6 +29,7 @@
 <script src="./node_modules/@babel/standalone/babel.min.js"></script>
 
 
+
 <script type="text/babel" data-presets="react">
 ;(function(){
 // @ds-adherence-ignore -- omelette starter scaffold (raw elements/hex/px by design)
@@ -1925,28 +1926,52 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
   const recTimer = useRefRec(null);
   const cdTimer = useRefRec(null);
 
+  // device lists + selections
+  const [videoDevices, setVideoDevices] = useStateRec([]);
+  const [audioDevices, setAudioDevices] = useStateRec([]);
+  const [videoDev, setVideoDev] = useStateRec(''); // deviceId of selected camera
+  const [audioDev, setAudioDev] = useStateRec(''); // deviceId of selected mic
+
   useKeyboard(session, setSession, canvasRef);
 
-  // webcam
+  // Enumerate devices — called after getUserMedia so labels are populated
+  async function refreshDevices() {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setVideoDevices(all.filter(d => d.kind === 'videoinput'));
+      setAudioDevices(all.filter(d => d.kind === 'audioinput'));
+    } catch (_) {}
+  }
+
+  // webcam — re-runs when the user picks a different camera
   useEffectRec(() => {
     let stream;
     let cancelled = false;
-    // If getUserMedia hangs (macOS permission dialog not shown / denied silently),
-    // fall back to 'off' after 2s so the UI never stays stuck at "Connecting…"
-    const timeout = setTimeout(() => { if (!cancelled) setCam('off'); }, 2000);
+    setCam('pending');
+    // If getUserMedia hangs (macOS permission not granted), fall back after 2 s
+    const timeout = setTimeout(() => {
+      if (!cancelled) { setCam('off'); refreshDevices(); }
+    }, 2000);
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        const videoConstraint = videoDev
+          ? { deviceId: { exact: videoDev } }
+          : { facingMode: 'user' };
+        stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false });
         clearTimeout(timeout);
+        await refreshDevices(); // labels now available
         if (!cancelled && videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
           setCam('live');
         }
-      } catch (e) { clearTimeout(timeout); if (!cancelled) setCam('off'); }
+      } catch (e) {
+        clearTimeout(timeout);
+        if (!cancelled) { setCam('off'); refreshDevices(); }
+      }
     })();
     return () => { cancelled = true; clearTimeout(timeout); if (stream) stream.getTracks().forEach(t => t.stop()); };
-  }, []);
+  }, [videoDev]);
 
   function startCountdown() {
     canvasRef.current && canvasRef.current.restart();
@@ -2065,8 +2090,20 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
 
       {/* device + status row (top under toolbar, left) */}
       <div style={{ position: 'absolute', top: 56, left: 16, zIndex: 25, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <DevicePill icon="camera" label={cam === 'live' ? 'FaceTime HD Camera' : cam === 'off' ? 'No camera' : 'Connecting…'} />
-        <DevicePill icon="mic" label="MacBook Pro Mic" />
+        <DeviceSelect
+          icon="camera"
+          devices={videoDevices}
+          value={videoDev}
+          onChange={(id) => setVideoDev(id)}
+          fallback={cam === 'live' ? 'Camera' : cam === 'off' ? 'No camera' : 'Connecting…'}
+        />
+        <DeviceSelect
+          icon="mic"
+          devices={audioDevices}
+          value={audioDev}
+          onChange={(id) => setAudioDev(id)}
+          fallback="Microphone"
+        />
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.65)',
           background: 'rgba(0,0,0,0.4)', padding: '4px 9px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)' }}>1080p · 30fps</span>
       </div>
@@ -2154,13 +2191,65 @@ function glassBtn(active) {
   };
 }
 
-function DevicePill({ icon, label }) {
+function DeviceSelect({ icon, devices, value, onChange, fallback }) {
+  const [open, setOpen] = useStateRec(false);
+  const wrapRef = useRefRec(null);
+
+  // close on outside click
+  useEffectRec(() => {
+    if (!open) return;
+    function away(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+
+  const current = devices.find(d => d.deviceId === value);
+  // trim long device labels (e.g. "FaceTime HD Camera (Built-in)") to fit the pill
+  const shortLabel = (current?.label || fallback).replace(/ \(.*\)$/, '').replace(/^Default - /, '') || fallback;
+  const hasChoice = devices.length > 1;
+
+  const pillStyle = {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    fontFamily: 'var(--font-mono)', fontSize: 11,
+    color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.45)',
+    padding: '4px 9px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.14)',
+    cursor: hasChoice ? 'pointer' : 'default', userSelect: 'none',
+  };
+
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)',
-      fontSize: 11, color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.4)', padding: '4px 9px',
-      borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)' }}>
-      <Icon name={icon} size={13} />{label}<Icon name="chevron" size={11} style={{ opacity: 0.6 }} />
-    </span>
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div onClick={() => hasChoice && setOpen(o => !o)} style={pillStyle}>
+        <Icon name={icon} size={13} />
+        {shortLabel}
+        {hasChoice && <Icon name="chevron" size={11} style={{ opacity: 0.55, marginLeft: 1 }} />}
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 200,
+          background: '#1c1f2b', border: '1px solid rgba(255,255,255,0.13)',
+          borderRadius: 10, padding: 4, minWidth: 210,
+          boxShadow: '0 10px 36px rgba(0,0,0,0.7)',
+        }}>
+          {devices.map(d => {
+            const lbl = d.label.replace(/ \(.*\)$/, '').replace(/^Default - /, '') || `Device ${d.deviceId.slice(0, 6)}`;
+            const active = d.deviceId === value || (!value && d.deviceId === devices[0]?.deviceId);
+            return (
+              <button key={d.deviceId} onClick={() => { onChange(d.deviceId); setOpen(false); }} style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                fontFamily: 'var(--font-mono)', fontSize: 12,
+                color: active ? '#fff' : 'rgba(255,255,255,0.65)',
+                background: active ? 'rgba(255,255,255,0.09)' : 'transparent',
+                padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+              }}>
+                {active && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+                {!active && <span style={{ width: 6, flexShrink: 0 }} />}
+                {lbl}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2461,6 +2550,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 
 })();
 </script>
+
 
 
 </body>
