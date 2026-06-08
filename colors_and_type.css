@@ -1,0 +1,348 @@
+/* ============================================================
+   Eventdaddy Design System — Colors & Type
+   Reconstructed from Flickerdocs reference screenshots.
+   ============================================================ */
+
+/* ---------- Webfonts (local — Geist + Geist Mono variable) ---------- */
+@font-face {
+  font-family: 'Geist';
+  src: url('fonts/Geist[wght].woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('fonts/Geist-Italic[wght].woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('fonts/GeistMono[wght].woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('fonts/GeistMono-Italic[wght].woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ---------- Base palette (LIGHT, default) ---------- */
+
+  /* Paper / surface */
+  --paper:        #F0EBE2;   /* page background — warm cream */
+  --surface:      #FFFFFF;   /* editor / primary content surface */
+  --surface-2:    #FAF7F1;   /* raised cards, callout boxes */
+  --surface-3:    #E8E2D4;   /* sunken / divider band */
+
+  /* Ink */
+  --ink-1:        #1A1A1A;   /* primary text */
+  --ink-2:        #5C5C5C;   /* secondary text */
+  --ink-3:        #9A958C;   /* tertiary / placeholder */
+  --ink-inverse:  #F5F0E6;
+
+  /* Accent (the only saturated hue in chrome) */
+  --accent:       #2B6CFF;
+  --accent-hover: #1E55D8;
+  --accent-soft:  rgba(43, 108, 255, 0.10);   /* nav-pill active */
+  --accent-faint: rgba(43, 108, 255, 0.05);
+
+  /* Pill set — used for tags, peer names, status chips */
+  --pill-lavender: #E8D4F5;
+  --pill-peach:    #F8C9A8;
+  --pill-butter:   #E8E4B0;
+  --pill-sage:     #C8DDC0;
+  --pill-sky:      #C8DEEC;
+  --pill-rose:     #F2CBD2;
+
+  /* Borders */
+  --border:        rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --border-faint:  rgba(0, 0, 0, 0.04);
+
+  /* Shadow tokens (use sparingly) */
+  --shadow-float:  0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-pop:    0 8px 24px rgba(0, 0, 0, 0.08);
+
+  /* Radii */
+  --r-tag:    4px;
+  --r-input:  6px;
+  --r-card:   8px;
+  --r-pill:   999px;
+
+  /* Spacing (8px base) */
+  --s-1:  4px;
+  --s-2:  8px;
+  --s-3:  12px;
+  --s-4:  16px;
+  --s-5:  24px;
+  --s-6:  32px;
+  --s-7:  48px;
+  --s-8:  64px;
+  --s-9:  96px;
+
+  /* Typography ---------------------------------------------- */
+
+  --font-mono:    'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans:    'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Sizes */
+  --t-xs:    12px;
+  --t-sm:    13px;
+  --t-base:  14.5px;   /* body */
+  --t-md:    15px;
+  --t-lg:    17px;     /* H3 */
+  --t-xl:    19px;     /* H2 */
+  --t-2xl:   22px;     /* H1 — note: hierarchy is weight, not scale */
+  --t-3xl:   28px;
+
+  --lh-tight: 1.35;
+  --lh-body:  1.7;
+  --lh-loose: 1.85;
+
+  /* Tracking */
+  --track-tight:  -0.01em;
+  --track-normal: 0;
+  --track-wide:   0.06em;
+  --track-mega:   0.12em;   /* small-caps section labels */
+
+  /* Motion */
+  --ease:        cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast:    120ms;
+  --dur-base:    180ms;
+  --dur-slow:    280ms;
+}
+
+/* ---------- DARK MODE ---------- */
+:root[data-theme="dark"],
+.theme-dark {
+  --paper:        #0F1117;
+  --surface:      #161922;
+  --surface-2:    #1C2030;
+  --surface-3:    #242938;
+
+  --ink-1:        #E8E2D4;
+  --ink-2:        #A7A39A;
+  --ink-3:        #6B6862;
+  --ink-inverse:  #1A1A1A;
+
+  --accent:       #5B8DFF;
+  --accent-hover: #7AA3FF;
+  --accent-soft:  rgba(91, 141, 255, 0.16);
+  --accent-faint: rgba(91, 141, 255, 0.08);
+
+  /* Pills tint slightly differently in dark — keep hue, lower lightness */
+  --pill-lavender: #6B4A8A;
+  --pill-peach:    #B26B3F;
+  --pill-butter:   #8A8540;
+  --pill-sage:     #5C7A55;
+  --pill-sky:      #4A6F88;
+  --pill-rose:     #92505A;
+
+  --border:        rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-faint:  rgba(255, 255, 255, 0.04);
+
+  --shadow-float:  0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-pop:    0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================
+   Semantic type styles
+   ============================================================ */
+
+body, .ed-body {
+  font-family: var(--font-mono);
+  font-size: var(--t-base);
+  line-height: var(--lh-body);
+  color: var(--ink-1);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ed-wordmark {
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+  color: var(--ink-1);
+}
+
+h1, .ed-h1 {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xl);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-tight);
+  color: var(--ink-1);
+  margin: 0 0 var(--s-4);
+}
+
+h2, .ed-h2 {
+  font-family: var(--font-mono);
+  font-size: var(--t-xl);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  color: var(--ink-1);
+  margin: var(--s-7) 0 var(--s-3);
+}
+
+h3, .ed-h3 {
+  font-family: var(--font-mono);
+  font-size: var(--t-lg);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  color: var(--ink-1);
+  margin: var(--s-5) 0 var(--s-2);
+}
+
+p, .ed-p {
+  font-family: var(--font-mono);
+  font-size: var(--t-base);
+  line-height: var(--lh-body);
+  color: var(--ink-1);
+  margin: 0 0 var(--s-4);
+  text-wrap: pretty;
+}
+
+.ed-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--track-mega);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+a, .ed-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+a:hover, .ed-link:hover { opacity: 0.75; }
+
+em, .ed-em {
+  font-style: italic;
+  color: inherit;
+}
+
+/* Inline code chip — for file paths, identifiers */
+code, .ed-code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-3);
+  color: var(--ink-1);
+  padding: 1px 6px;
+  border-radius: var(--r-tag);
+  border: 1px solid var(--border-faint);
+}
+
+/* Inline pill-tag — for people, named entities */
+.ed-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: var(--r-tag);
+  color: var(--ink-1);
+  vertical-align: baseline;
+  line-height: 1.5;
+}
+.ed-tag--lavender { background: var(--pill-lavender); }
+.ed-tag--peach    { background: var(--pill-peach); }
+.ed-tag--butter   { background: var(--pill-butter); }
+.ed-tag--sage     { background: var(--pill-sage); }
+.ed-tag--sky      { background: var(--pill-sky); }
+.ed-tag--rose     { background: var(--pill-rose); }
+
+[data-theme="dark"] .ed-tag,
+.theme-dark .ed-tag { color: #FFF8EC; }
+
+/* Capsule pill — for nav-active, status, peer names */
+.ed-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid transparent;
+}
+
+/* Button — primary */
+.ed-btn {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.ed-btn:hover  { background: var(--accent-hover); }
+.ed-btn:active { transform: scale(0.98); }
+
+.ed-btn--ghost {
+  background: var(--surface);
+  color: var(--accent);
+  border-color: var(--border);
+}
+.ed-btn--ghost:hover { background: var(--surface-2); }
+
+/* Card */
+.ed-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: var(--s-5);
+}
+
+/* Input */
+.ed-input {
+  font-family: var(--font-mono);
+  font-size: var(--t-base);
+  padding: 8px 12px;
+  border-radius: var(--r-input);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-1);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.ed-input:focus { border-color: var(--accent); }
+
+/* Floating toggle pill (theme switcher in reference) */
+.ed-float-pill {
+  position: fixed;
+  bottom: var(--s-5);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  box-shadow: var(--shadow-float);
+  cursor: pointer;
+}
+
+/* Reading column constraint */
+.ed-column { max-width: 62ch; margin: 0 auto; }
