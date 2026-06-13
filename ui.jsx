@@ -43,6 +43,7 @@ function Icon({ name, size = 16, stroke, sw = 1.5, style }) {
     case 'eye':      return wrap(<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.8"/></>);
     case 'restart':  return wrap(<><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 3.5V8h4.5"/></>);
     case 'check':    return wrap(<path d="M5 12.5l4.5 4.5L19 7"/>);
+    case 'download': return wrap(<><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></>);
     default:         return wrap(<circle cx="12" cy="12" r="3"/>);
   }
 }

@@ -21,8 +21,16 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
   const [count, setCount] = useStateRec(3);
   const [recSecs, setRecSecs] = useStateRec(0);
   const [takes, setTakes] = useStateRec([]);
+  const [res, setRes] = useStateRec('');          // real resolution badge, e.g. "1280×720 · 30fps"
+  const [playTake, setPlayTake] = useStateRec(null); // take currently open in the playback overlay
   const recTimer = useRefRec(null);
   const cdTimer = useRefRec(null);
+
+  // recording pipeline
+  const streamRef = useRefRec(null);   // live camera+mic stream (shared by preview + recorder)
+  const mediaRecRef = useRefRec(null); // active MediaRecorder
+  const chunksRef = useRefRec([]);     // collected encoded chunks
+  const recSecsRef = useRefRec(0);     // duration counter (ref, avoids stale closure in onstop)
 
   // device lists + selections
   const [videoDevices, setVideoDevices] = useStateRec([]);
@@ -41,7 +49,8 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
     } catch (_) {}
   }
 
-  // webcam — re-runs when the user picks a different camera
+  // webcam — re-runs when the user picks a different camera or mic.
+  // Captures video AND audio so the MediaRecorder has a real A/V source.
   useEffectRec(() => {
     let stream;
     let cancelled = false;
@@ -52,13 +61,25 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
     }, 2000);
     (async () => {
       try {
-        const videoConstraint = videoDev
-          ? { deviceId: { exact: videoDev } }
-          : { facingMode: 'user' };
-        stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false });
+        const videoConstraint = videoDev ? { deviceId: { exact: videoDev } } : { facingMode: 'user' };
+        const audioConstraint = audioDev ? { deviceId: { exact: audioDev } } : true;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: audioConstraint });
+        } catch (errAV) {
+          // mic blocked → retry video-only so the preview still works (recording will be silent)
+          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false });
+        }
         clearTimeout(timeout);
         await refreshDevices(); // labels now available
-        if (!cancelled && videoRef.current) {
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        // real resolution badge from the live video track
+        const vt = stream.getVideoTracks()[0];
+        const st = vt && vt.getSettings ? vt.getSettings() : {};
+        if (st.width && st.height) {
+          setRes(`${st.width}×${st.height}${st.frameRate ? ` · ${Math.round(st.frameRate)}fps` : ''}`);
+        }
+        if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play().catch(() => {});
           setCam('live');
@@ -68,8 +89,13 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
         if (!cancelled) { setCam('off'); refreshDevices(); }
       }
     })();
-    return () => { cancelled = true; clearTimeout(timeout); if (stream) stream.getTracks().forEach(t => t.stop()); };
-  }, [videoDev]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, [videoDev, audioDev]);
 
   function startCountdown() {
     canvasRef.current && canvasRef.current.restart();
@@ -82,14 +108,41 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
     }, 800);
   }
   function beginRecording() {
-    setRecState('recording'); setRecSecs(0);
+    setRecState('recording'); setRecSecs(0); recSecsRef.current = 0;
     setSession(s => ({ ...s, playing: true }));
-    recTimer.current = setInterval(() => setRecSecs(s => s + 1), 1000);
+    recTimer.current = setInterval(() => { recSecsRef.current += 1; setRecSecs(recSecsRef.current); }, 1000);
+
+    // start a real MediaRecorder on the live stream
+    const stream = streamRef.current;
+    if (stream && typeof MediaRecorder !== 'undefined') {
+      try {
+        const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+          .find(m => MediaRecorder.isTypeSupported(m)) || '';
+        const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        chunksRef.current = [];
+        const id = Date.now();
+        rec.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+        rec.onstop = () => {
+          const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          setTakes(t => [{ id, dur: recSecsRef.current, accent: script.accent, url, size: blob.size }, ...t].slice(0, 6));
+        };
+        rec.start();
+        mediaRecRef.current = rec;
+      } catch (e) { mediaRecRef.current = null; }
+    }
   }
   function stopRecording() {
     clearInterval(recTimer.current);
     setSession(s => ({ ...s, playing: false }));
-    setTakes(t => [{ id: Date.now(), dur: recSecs, accent: script.accent }, ...t].slice(0, 6));
+    const rec = mediaRecRef.current;
+    if (rec && rec.state !== 'inactive') {
+      try { rec.stop(); } catch (e) {} // onstop builds the take with the recorded file
+      mediaRecRef.current = null;
+    } else {
+      // no recorder (camera/mic off) → still log a take, just without media
+      setTakes(t => [{ id: Date.now(), dur: recSecsRef.current, accent: script.accent, url: null, size: 0 }, ...t].slice(0, 6));
+    }
     setRecState('idle');
   }
   function onRecButton() {
@@ -97,7 +150,11 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
     else if (recState === 'recording') stopRecording();
     else { clearInterval(cdTimer.current); setRecState('idle'); }
   }
-  useEffectRec(() => () => { clearInterval(recTimer.current); clearInterval(cdTimer.current); }, []);
+  useEffectRec(() => () => {
+    clearInterval(recTimer.current); clearInterval(cdTimer.current);
+    const rec = mediaRecRef.current;
+    if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) {} }
+  }, []);
 
   const ratio = ASPECTS.find(a => a.id === aspect).ratio;
 
@@ -202,8 +259,8 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
           onChange={(id) => setAudioDev(id)}
           fallback="Microphone"
         />
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.65)',
-          background: 'rgba(0,0,0,0.4)', padding: '4px 9px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)' }}>1080p · 30fps</span>
+        {res && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.65)',
+          background: 'rgba(0,0,0,0.4)', padding: '4px 9px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.12)' }}>{res}</span>}
       </div>
 
       {/* takes tray */}
@@ -213,15 +270,20 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.12em',
             textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>Takes · {takes.length}</div>
           {takes.map((tk, i) => (
-            <div key={tk.id} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <div style={{ width: 56, height: 34, borderRadius: 5, flexShrink: 0,
+            <div key={tk.id}
+              onClick={() => tk.url && setPlayTake(tk)}
+              title={tk.url ? 'Play take' : 'No media (camera/mic was off)'}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: tk.url ? 'pointer' : 'default' }}>
+              <div style={{ position: 'relative', width: 56, height: 34, borderRadius: 5, flexShrink: 0,
                 background: `linear-gradient(135deg, var(--pill-${tk.accent}), rgba(0,0,0,0.5))`,
                 border: '1px solid rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="play" size={13} style={{ color: 'rgba(255,255,255,0.9)' }} />
+                <Icon name="play" size={13} style={{ color: tk.url ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)' }} />
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#fff', lineHeight: 1.3 }}>
                 <div>Take {takes.length - i}</div>
-                <div style={{ color: 'rgba(255,255,255,0.55)' }}>{fmtTime(tk.dur)}</div>
+                <div style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  {fmtTime(tk.dur)}{tk.size ? ` · ${(tk.size / 1048576).toFixed(1)}MB` : ''}
+                </div>
               </div>
             </div>
           ))}
@@ -275,6 +337,33 @@ function RecordingScreen({ script, session, setSession, tweaks, onBack, onPrompt
         />
         </div>
       </div>
+
+      {/* take playback overlay */}
+      {playTake && (
+        <div onClick={() => setPlayTake(null)} style={{
+          position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 14, padding: 28,
+          background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+        }}>
+          <video onClick={(e) => e.stopPropagation()} src={playTake.url} controls autoPlay
+            style={{ maxWidth: '80%', maxHeight: '72%', borderRadius: 10, background: '#000',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }} />
+          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <a href={playTake.url} download={`${script.title.replace(/[^\w]+/g, '-').toLowerCase()}-take.webm`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none',
+                fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: '#13151c',
+                background: '#fff', padding: '9px 16px', borderRadius: 999, cursor: 'pointer' }}>
+              <Icon name="download" size={15} /> Download
+            </a>
+            <button onClick={() => setPlayTake(null)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid rgba(255,255,255,0.22)',
+              fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: '#fff',
+              background: 'rgba(255,255,255,0.08)', padding: '9px 16px', borderRadius: 999, cursor: 'pointer' }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

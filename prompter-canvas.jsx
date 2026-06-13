@@ -33,6 +33,9 @@ const PrompterCanvas = forwardRef(function PrompterCanvas(props, ref) {
   const lastTsRef = useRef(0);
   const micRef = useRef(0.4);
   const envRef = useRef({ pauseUntil: 0, nextPauseAt: 1.5, drift: 1, t: 0 });
+  const audioRef = useRef(null);     // { ctx, analyser, data, stream } when mic is live
+  const lvlRef = useRef(0);          // smoothed RMS level
+  const speakFactorRef = useRef(0);  // smoothed scroll factor from voice activity
   const meterBars = useRef([]);
   const lastProgressRef = useRef(0);
   const wordRefCbs = useRef({});
@@ -47,6 +50,56 @@ const PrompterCanvas = forwardRef(function PrompterCanvas(props, ref) {
   useEffect(() => { playingRef.current = playing; }, [playing]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { wpmRef.current = wpm; }, [wpm]);
+
+  // ---- real microphone capture for voice mode (VAD pacing) ----
+  // Opens the mic only while voice mode is actually playing, wires it into a
+  // Web Audio analyser, and tears everything down on pause/unmount.
+  useEffect(() => {
+    if (!(mode === 'voice' && playing)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new Ctx();
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.85;
+        src.connect(analyser);
+        audioRef.current = { ctx, analyser, data: new Uint8Array(analyser.fftSize), stream };
+      } catch (e) {
+        // mic blocked/unavailable → loop falls back to steady auto-scroll
+        audioRef.current = null;
+      }
+    })();
+    return () => {
+      cancelled = true;
+      const a = audioRef.current;
+      if (a) {
+        if (a.stream) a.stream.getTracks().forEach(t => t.stop());
+        if (a.ctx) a.ctx.close().catch(() => {});
+      }
+      audioRef.current = null;
+      lvlRef.current = 0;
+      speakFactorRef.current = 0;
+    };
+  }, [mode, playing]);
+
+  // Current mic loudness as RMS (0..~1), or null if the mic isn't live.
+  function readLevel() {
+    const a = audioRef.current;
+    if (!a || !a.analyser) return null;
+    a.analyser.getByteTimeDomainData(a.data);
+    let sum = 0;
+    for (let i = 0; i < a.data.length; i++) {
+      const v = (a.data[i] - 128) / 128;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / a.data.length);
+  }
 
   const isCamera = variant === 'camera';
 
@@ -140,17 +193,25 @@ const PrompterCanvas = forwardRef(function PrompterCanvas(props, ref) {
     let factor = 0;
     if (playingRef.current && modeRef.current !== 'manual') {
       if (modeRef.current === 'voice') {
-        // organic speech envelope: drift + occasional pauses
-        if (env.t >= env.nextPauseAt && env.t > env.pauseUntil) {
-          env.pauseUntil = env.t + 0.3 + Math.random() * 0.6;
-          env.nextPauseAt = env.t + 2.5 + Math.random() * 3.5;
+        // Real voice-activity pacing: advance while the speaker is talking,
+        // hold the line when they pause. Driven by live mic RMS.
+        const rms = readLevel();
+        if (rms == null) {
+          // no mic (denied/unavailable) → steady auto-scroll fallback
+          factor = 1;
+          micRef.current += (0 - micRef.current) * Math.min(1, dt * 8);
+        } else {
+          lvlRef.current += (rms - lvlRef.current) * Math.min(1, dt * 10);
+          const lvl = lvlRef.current;
+          const floor = 0.04; // noise floor — below this we treat it as silence
+          const speaking = lvl > floor;
+          // meter reflects actual loudness
+          micRef.current += (Math.min(1, lvl * 7) - micRef.current) * Math.min(1, dt * 14);
+          // speaking advances the scroll (louder = slightly faster); silence pauses it
+          const target = speaking ? Math.min(1.5, 0.75 + (lvl - floor) * 9) : 0;
+          speakFactorRef.current += (target - speakFactorRef.current) * Math.min(1, dt * 6);
+          factor = speakFactorRef.current;
         }
-        const paused = env.t < env.pauseUntil;
-        // smooth drift between 0.8 and 1.25
-        env.drift += (((Math.sin(env.t * 0.9) + Math.sin(env.t * 2.3) * 0.4) * 0.18 + 1) - env.drift) * Math.min(1, dt * 4);
-        factor = paused ? 0.03 : Math.max(0.4, env.drift);
-        const targetMic = paused ? 0.12 : Math.min(1, 0.55 + (factor - 0.9) * 0.7 + Math.random() * 0.2);
-        micRef.current += (targetMic - micRef.current) * Math.min(1, dt * 12);
       } else {
         factor = 1;
         micRef.current += (0 - micRef.current) * Math.min(1, dt * 8);
@@ -161,7 +222,7 @@ const PrompterCanvas = forwardRef(function PrompterCanvas(props, ref) {
         if (onEnd) onEnd();
       }
     } else {
-      micRef.current += ((modeRef.current === 'voice' && playingRef.current ? 0.2 : 0) - micRef.current) * Math.min(1, dt * 8);
+      micRef.current += (0 - micRef.current) * Math.min(1, dt * 8);
     }
 
     applyTransform();
