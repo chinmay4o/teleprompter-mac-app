@@ -4,10 +4,45 @@
   "description": "Voice-driven teleprompter — scrolls your script as you speak",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "com.chinmay.cue",
+    "productName": "Cue",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "colors_and_type.css",
+      "*.jsx",
+      "fonts/**",
+      "build/icon-1024.png",
+      "node_modules/react/umd/**",
+      "node_modules/react-dom/umd/**",
+      "node_modules/@babel/standalone/babel.min.js"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": "dmg",
+      "identity": null,
+      "extendInfo": {
+        "NSCameraUsageDescription": "Cue uses your camera so you can frame and record yourself while reading the teleprompter.",
+        "NSMicrophoneUsageDescription": "Cue uses your microphone for voice-driven scrolling and to record audio with your takes."
+      }
+    },
+    "dmg": {
+      "title": "Cue ${version}"
+    }
   },
   "devDependencies": {
-    "electron": "^41.7.1"
+    "electron": "^41.7.1",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
     "@babel/standalone": "^7.29.7",

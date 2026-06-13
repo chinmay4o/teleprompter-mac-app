@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {
+    font-family: 'Geist Mono';
+    src: url('../fonts/GeistMono[wght].woff2') format('woff2');
+    font-weight: 100 900;
+  }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  /* 1024x1024 canvas, transparent corners around the squircle */
+  .wrap { width: 1024px; height: 1024px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#222634"/>
+          <stop offset="1" stop-color="#0E1016"/>
+        </linearGradient>
+        <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+          <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <!-- macOS squircle (~22.4% corner radius) -->
+      <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bg)"/>
+      <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#sheen)"/>
+      <rect x="3" y="3" width="1018" height="1018" rx="227" ry="227" fill="none"
+            stroke="#ffffff" stroke-opacity="0.06" stroke-width="2"/>
+      <!-- wordmark: Cue. with accent dot -->
+      <text x="500" y="512" text-anchor="middle" dominant-baseline="central"
+            font-family="Geist Mono" font-weight="700" font-size="400"
+            letter-spacing="-14" fill="#F5F2EC">Cue<tspan fill="#2B6CFF">.</tspan></text>
+    </svg>
+  </div>
+</body>
+</html>

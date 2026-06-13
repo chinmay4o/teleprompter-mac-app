@@ -4,9 +4,11 @@ dist/
 out/
 .npmrc
 
-# Xcode build output
-build/
+# Xcode build output (legacy)
 DerivedData/
+
+# electron-builder working dir — keep the source icon, drop the generated iconset
+build/icon.iconset/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
